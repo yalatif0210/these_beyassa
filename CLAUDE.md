@@ -11,7 +11,9 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 
 - Le code est complet et fonctionne : 21 tests pytest passent (`python -m pytest`).
 - Les écrans ont été vérifiés sur mobile (390 px) et sur ordinateur, avec des données fictives.
-- Rien n'est encore déployé. Aucun dépôt git n'a été initialisé.
+- Rien n'est encore déployé.
+- Dépôt git sur la branche `main`, publié sur GitHub : `origin` = https://github.com/yalatif0210/these_beyassa.git. Auteur configuré localement : `yalatif0210`.
+- Les tests passent aussi sous Python 3.14 (version installée sur le PC de développement).
 
 ## Règles métier validées par le propriétaire
 
@@ -116,8 +118,7 @@ docker compose up -d --build              # production (après avoir rempli .env
 
 ## Prochaines étapes possibles
 
-1. Initialiser git et faire un premier commit.
-2. Lancer l'application en local et la tester sur un vrai téléphone (`--host 0.0.0.0` et l'IP du PC dans `BASE_URL`).
-3. Faire valider par le propriétaire les choix listés plus haut, et trancher la durée d'ouverture.
-4. Déployer sur un VPS : Docker, Nginx et certbot.
-5. Si l'étude démarre, ajouter Flask-Migrate avant toute évolution du schéma.
+1. Lancer l'application en local et la tester sur un vrai téléphone (`--host 0.0.0.0` et l'IP du PC dans `BASE_URL`).
+2. Faire valider par le propriétaire les choix listés plus haut, et trancher la durée d'ouverture.
+3. Déployer sur un VPS : Docker, Nginx et certbot.
+4. Si l'étude démarre, ajouter Flask-Migrate avant toute évolution du schéma.
