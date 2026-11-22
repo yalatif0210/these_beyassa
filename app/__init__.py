@@ -12,6 +12,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from . import referentiels
 from .models import Admin, Parametres, db, empreinte
 
+VALEUR_EXEMPLE = "a_remplacer"
+
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
@@ -23,6 +25,11 @@ def _bool_env(nom, defaut=False):
 def create_app(config=None):
     app = Flask(__name__, instance_relative_config=True)
     os.makedirs(app.instance_path, exist_ok=True)
+
+    # Une valeur d'exemple de .env.example oubliée (ex. mot de passe admin « a_remplacer ») : on refuse de démarrer.
+    oublis = [n for n in ("SECRET_KEY", "ADMIN_MOT_DE_PASSE", "POSTGRES_PASSWORD") if os.environ.get(n) == VALEUR_EXEMPLE]
+    if oublis:
+        raise RuntimeError(f"Valeur d'exemple « {VALEUR_EXEMPLE} » à remplacer dans .env : {', '.join(oublis)}")
 
     secret = os.environ.get("SECRET_KEY")
     if not secret:

@@ -1,18 +1,38 @@
+# Production : VPS dédié, derrière Cloudflare. Procédure complète : deploy/DEPLOIEMENT_VPS.md
+#
+# Deux réseaux :
+#   interne  « internal: true » : aucune sortie vers Internet. La base, l'application et les
+#            sauvegardes ne sont que là : même compromise, l'application ne peut rien envoyer dehors.
+#   public   seul le relais nginx y est, et seul lui publie un port (443, filtré sur Cloudflare).
+#
+# Les secrets viennent du fichier .env (non versionné). Les variables obligatoires arrêtent le
+# démarrage avec un message clair si elles manquent.
+
+x-journaux: &journaux
+  # Journaux Docker limités (5 fichiers de 10 Mo par service) : sinon ils grossissent sans fin.
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?Définir POSTGRES_DB dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Définir POSTGRES_USER dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Définir POSTGRES_PASSWORD dans .env}
     volumes:
       - donnees_pg:/var/lib/postgresql/data
+    networks: [interne]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    <<: *journaux
 
   web:
     build: .
@@ -20,11 +40,39 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      SECRET_KEY: ${SECRET_KEY:?Définir SECRET_KEY dans .env}
+      BASE_URL: ${BASE_URL:?Définir BASE_URL dans .env}
+      COOKIE_SECURISE: "true"
+    networks: [interne]
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # /bienvenue répond sans connexion et lit la base : l'application et la base sont vérifiées.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/bienvenue', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    <<: *journaux
+
+  relais:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    environment:
+      DOMAINE: ${DOMAINE:?Définir DOMAINE dans .env}
+      NGINX_ENVSUBST_FILTER: "^DOMAINE$$"
     ports:
-      - "127.0.0.1:${PORT_WEB:-8000}:8000"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./deploy/nginx/cloudflare:/etc/nginx/cloudflare:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+    networks: [interne, public]
+    depends_on:
+      web:
+        condition: service_healthy
+    <<: *journaux
 
   sauvegarde:
     image: postgres:16-alpine
@@ -39,9 +87,16 @@ services:
       - ./sauvegardes:/sauvegardes
       - ./deploy/sauvegarde.sh:/sauvegarde.sh:ro
     entrypoint: ["sh", "/sauvegarde.sh"]
+    networks: [interne]
     depends_on:
       db:
         condition: service_healthy
+    <<: *journaux
+
+networks:
+  interne:
+    internal: true
+  public: {}
 
 volumes:
   donnees_pg:

@@ -54,19 +54,22 @@ python -m pytest
 
 ## Déploiement sur un serveur (Docker)
 
+Production : VPS dédié, sous-domaine `etude.beyassa.org` derrière Cloudflare. **Procédure complète pas à pas : [deploy/DEPLOIEMENT_VPS.md](deploy/DEPLOIEMENT_VPS.md).**
+
 ```bash
 cp .env.example .env        # puis remplir toutes les valeurs « a_remplacer »
-docker compose up -d --build
-docker compose logs -f web
+# certificat d'origine Cloudflare dans deploy/certs/origine.pem et origine.key
+docker compose up -d --build --wait
 ```
 
-Trois services démarrent :
+Quatre services démarrent :
+- `relais` : nginx, seul service exposé (port 443). Il n'accepte que les connexions venant de Cloudflare et n'écrit pas `/acces/` dans ses journaux ;
+- `web` : l'application (Gunicorn) ;
 - `db` : PostgreSQL 16 ;
-- `web` : l'application (Gunicorn), accessible uniquement en local sur le port 8000 ;
 - `sauvegarde` : une sauvegarde de la base par jour dans `./sauvegardes`, conservée 30 jours.
 
-Nginx sert l'application en HTTPS : voir `deploy/nginx.conf`, puis `certbot --nginx`.
-Le HTTPS est indispensable : avec `COOKIE_SECURISE=true`, les navigateurs n'envoient le cookie de session qu'en HTTPS.
+`web`, `db` et `sauvegarde` sont sur un réseau interne sans accès à Internet.
+L'application refuse de démarrer si une valeur d'exemple (`a_remplacer`) est restée dans `.env`.
 
 **Restaurer une sauvegarde**
 ```bash
@@ -84,7 +87,7 @@ gunzip -c sauvegardes/beyassa_AAAAMMJJ_HHMM.sql.gz | docker compose exec -T db p
 
 L'accès des chirurgiens n'a ni compte ni mot de passe, pour faciliter l'adhésion. Les protections sont invisibles pour eux :
 - le QR code contient une clé aléatoire impossible à deviner, que l'administratrice peut remplacer en un clic ;
-- la clé disparaît de la barre d'adresse juste après le scan, et n'est pas écrite dans les journaux Nginx ;
+- la clé disparaît de la barre d'adresse juste après le scan, et n'est écrite dans aucun journal (ni nginx, ni Gunicorn) ;
 - la recherche n'affiche aucune donnée clinique ;
 - les pages ne sont pas indexées par les moteurs de recherche ;
 - le nombre de recherches et de tentatives de connexion par minute est limité ;

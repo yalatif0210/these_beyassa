@@ -14,4 +14,6 @@ USER beyassa
 
 EXPOSE 8000
 # --preload : l'application (et la création des tables) est initialisée une seule fois.
-CMD ["gunicorn", "--preload", "-w", "2", "-b", "0.0.0.0:8000", "--access-logfile", "-", "wsgi:app"]
+# Pas de journal d'accès Gunicorn : il écrirait le jeton du QR code (/acces/<jeton>).
+# Le relais nginx journalise les requêtes, sauf /acces/.
+CMD ["gunicorn", "--preload", "-w", "2", "-b", "0.0.0.0:8000", "wsgi:app"]

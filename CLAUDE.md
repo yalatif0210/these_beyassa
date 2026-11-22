@@ -9,9 +9,9 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 
 ## État actuel
 
-- Le code est complet et fonctionne : 60 tests pytest passent (`python -m pytest`).
+- Le code est complet et fonctionne : 61 tests pytest passent (`python -m pytest`).
 - Les écrans ont été vérifiés sur mobile (390 px) et sur ordinateur, avec des données fictives.
-- Rien n'est encore déployé. L'application a été lancée en local (`--host` sur l'IP Wi-Fi du PC) et testée sur téléphone.
+- Rien n'est encore déployé (cible : VPS dédié `vps-elyon-staging`, 169.58.210.138, dédié à Beyassa depuis le 22/11/2026 : Elyon ERP retiré, serveur durci (SSH par clé seulement, ufw, mises à jour automatiques) ; adresse `etude.beyassa.org`, domaine `beyassa.org` pas encore enregistré). L'application a été lancée en local (`--host` sur l'IP Wi-Fi du PC) et testée sur téléphone.
 - Dépôt git sur la branche `main`, publié sur GitHub : `origin` = https://github.com/yalatif0210/these_beyassa.git. Auteur configuré localement : `yalatif0210`.
 - Les tests passent aussi sous Python 3.14 (version installée sur le PC de développement).
 
@@ -70,7 +70,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 - Pages générées côté serveur (Jinja2), **sans framework JavaScript** : un formulaire léger sur mobile. Le peu de JavaScript utilisé est en ligne dans les templates.
 - PostgreSQL 16 en production (`DATABASE_URL`), SQLite dans `instance/` par défaut en local.
 - Les tables sont créées par `db.create_all()` au démarrage. **Il n'y a pas de migrations** : tout changement de colonne en cours d'étude demande une migration manuelle ou l'ajout de Flask-Migrate. La base SQLite locale a déjà reçu à la main `chirurgiens.generation_session` et `brouillons.seq` (`ALTER TABLE ... ADD COLUMN`).
-- Docker : Gunicorn avec `--preload` et 2 workers. `create_app` ferme ses connexions (`db.engine.dispose()`) après l'initialisation pour que les workers n'héritent pas du socket PostgreSQL du maître. Un service `sauvegarde` fait un `pg_dump` quotidien, conservé 30 jours. Nginx assure le HTTPS (`deploy/nginx.conf`).
+- Docker (production : VPS dédié, `etude.beyassa.org` derrière Cloudflare (réglé par `DOMAINE` et `BASE_URL`), procédure dans `deploy/DEPLOIEMENT_VPS.md`) : relais nginx (seul port publié : 443, filtré sur les adresses Cloudflare via `geo $realip_remote_addr`, IP réelle par `CF-Connecting-IP`, certificat d'origine Cloudflare dans `deploy/certs/` non versionné, `ssl_reject_handshake` pour tout autre nom) ; `web`, `db` et `sauvegarde` sur un réseau `internal: true` sans Internet. Gunicorn avec `--preload` et 2 workers, sans journal d'accès (il écrirait le jeton `/acces/`). `create_app` ferme ses connexions (`db.engine.dispose()`) après l'initialisation pour que les workers n'héritent pas du socket PostgreSQL du maître. Un `pg_dump` quotidien est conservé 30 jours, sur le même disque : à rapatrier hors du serveur. Liste des adresses Cloudflare : `deploy/maj_ips_cloudflare.sh` (cron mensuel). Configuration validée de bout en bout le 22/11/2026 dans Docker local : filtrage Cloudflare (444), refus de l'IP directe, parcours QR code, connexion admin, export, isolation réseau, sauvegarde.
 
 ```
 app/__init__.py      create_app, configuration par variables d'environnement, en-têtes de sécurité, commandes CLI
@@ -142,5 +142,5 @@ docker compose up -d --build              # production (après avoir rempli .env
 2. Faire valider par le propriétaire les choix listés plus haut et le texte des guides chirurgien, et trancher la durée d'ouverture.
 3. **Proposition en attente de décision** : questionnaire administrable et versionné par l'administratrice (approche hybride proposée : champs du protocole figés dans le code, questions complémentaires configurables et versionnées). Rien n'est commencé.
 4. Options proposées, non retenues pour l'instant : un QR code par chirurgien (verrou du nom plus fort), suppression de la copie locale des brouillons.
-5. Déployer sur un VPS : Docker, Nginx et certbot.
+5. Déployer : suivre `deploy/DEPLOIEMENT_VPS.md` (domaine et Cloudflare, retrait d'Elyon ERP, durcissement, installation).
 6. Si l'étude démarre, ajouter Flask-Migrate avant toute évolution du schéma.

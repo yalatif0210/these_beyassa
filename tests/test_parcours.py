@@ -718,3 +718,12 @@ def test_dimension_invalide_surlignee(chir):
     chir.post("/patient/HYD-001/intervention", data=intervention())
     r = chir.post("/patient/HYD-001/visite/M3", data={"echo_testicule_d_longueur": "12,5,3"})
     assert 'class="champ dims en-erreur" id="champ-echo_testicule_d"' in r.get_data(as_text=True)
+
+
+def test_refuse_de_demarrer_avec_une_valeur_d_exemple(monkeypatch):
+    import pytest
+
+    from app import create_app
+    monkeypatch.setenv("ADMIN_MOT_DE_PASSE", "a_remplacer")
+    with pytest.raises(RuntimeError, match="ADMIN_MOT_DE_PASSE"):
+        create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite://"})

@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 instance/
 sauvegardes/
+# Certificat d'origine Cloudflare et sa clé privée : jamais dans git
+deploy/certs/
 .venv/
 venv/
 .pytest_cache/
