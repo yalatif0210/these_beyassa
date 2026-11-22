@@ -9,9 +9,9 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 
 ## État actuel
 
-- Le code est complet et fonctionne : 45 tests pytest passent (`python -m pytest`).
+- Le code est complet et fonctionne : 46 tests pytest passent (`python -m pytest`).
 - Les écrans ont été vérifiés sur mobile (390 px) et sur ordinateur, avec des données fictives.
-- Rien n'est encore déployé.
+- Rien n'est encore déployé. L'application a été lancée en local (`--host` sur l'IP Wi-Fi du PC) et testée sur téléphone.
 - Dépôt git sur la branche `main`, publié sur GitHub : `origin` = https://github.com/yalatif0210/these_beyassa.git. Auteur configuré localement : `yalatif0210`.
 - Les tests passent aussi sous Python 3.14 (version installée sur le PC de développement).
 
@@ -24,6 +24,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 - Objectif : 60 patients, inclusion sur 4 mois.
 
 **Inclusion**
+- L'étude ne concerne que des **garçons** : le sexe n'est **pas demandé**. La colonne `patients.sexe` existe toujours mais reçoit « M » d'office (`R.SEXE_ETUDE`, jamais lu du formulaire) et n'est plus exportée.
 - L'étude porte sur les enfants de 1 à 10 ans. L'application ne doit **pas bloquer** la saisie selon l'âge (simple aide affichée).
 - Consentement des parents : oui ou non.
 - L'enfant est identifié par ses **initiales** uniquement, jamais par son nom. Un numéro `HYD-001`, `HYD-002`… est attribué automatiquement et noté dans le dossier papier.
@@ -65,9 +66,10 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 ## Architecture
 
 - Python 3.13, Flask 3.1, Flask-SQLAlchemy, Flask-WTF (CSRF), Flask-Limiter, qrcode.
+- Interface reprise du gabarit d'`app_distribution_stock` (vues seulement) : `style.css`, accent indigo `#4f46e5`, polices Inter et Material Icons auto-hébergées dans `app/static/polices/` (aucun appel à un CDN).
 - Pages générées côté serveur (Jinja2), **sans framework JavaScript** : un formulaire léger sur mobile. Le peu de JavaScript utilisé est en ligne dans les templates.
 - PostgreSQL 16 en production (`DATABASE_URL`), SQLite dans `instance/` par défaut en local.
-- Les tables sont créées par `db.create_all()` au démarrage. **Il n'y a pas de migrations** : tout changement de colonne en cours d'étude demande une migration manuelle ou l'ajout de Flask-Migrate.
+- Les tables sont créées par `db.create_all()` au démarrage. **Il n'y a pas de migrations** : tout changement de colonne en cours d'étude demande une migration manuelle ou l'ajout de Flask-Migrate. La base SQLite locale a déjà reçu à la main `chirurgiens.generation_session` et `brouillons.seq` (`ALTER TABLE ... ADD COLUMN`).
 - Docker : Gunicorn avec `--preload` et 2 workers. Un service `sauvegarde` fait un `pg_dump` quotidien, conservé 30 jours. Nginx assure le HTTPS (`deploy/nginx.conf`).
 
 ```
@@ -80,6 +82,7 @@ app/chirurgien.py    blueprint racine : accès par QR code, choix du nom, recher
 app/admin.py         blueprint /admin : tableau de bord, fiches, corrections, chirurgiens, paramètres, QR code, export
 app/export.py        colonnes() = source unique pour le CSV et pour le dictionnaire des variables
 app/templates/forms/ formulaires partagés (_inclusion, _intervention, _visite), inclus via formulaire.html
+app/templates/_brouillon_*.html  sauvegarde automatique (bandeau de reprise, pied, script)
 app/templates/_macros.html  macros de champs (radios en « pilules », cases, échelle de douleur, dimensions)
 app/templates/aide/   guide d'utilisation de chaque écran, nommé <blueprint>_<vue>.html (ex. chirurgien_accueil.html)
 ```
@@ -113,7 +116,8 @@ Toute requête qui écrit doit pouvoir être rejouée sans effet en double : dou
 - **Tout en français** : interface, noms de variables et de fonctions métier, messages, README.
 - **Aucun tiret cadratin (caractère Unicode U+2014)** nulle part : code, interface, documentation, messages de commit. Utiliser deux-points, virgules ou parenthèses.
 - Garder `referentiels.py` et `export.colonnes()` comme sources uniques. Un nouveau champ demande de modifier : le modèle, `saisie.py`, le formulaire partagé, la fiche admin (`admin/patient.html`), `export.colonnes()` et un test.
-- Interface d'abord pensée pour le téléphone : zones tactiles de 44 px minimum, choix en pilules plutôt qu'en listes déroulantes.
+- Interface d'abord pensée pour le téléphone : zones tactiles de 44 px minimum, choix en pilules plutôt qu'en listes déroulantes, champs en 16 px (évite le zoom iOS) et `min-width: 0` pour qu'ils restent dans leur encart.
+- **Jamais de bordure gauche colorée** pour signaler un état : utiliser la couleur du titre, un badge (`.puce`), une icône ou un fond teinté léger.
 - `deploy/sauvegarde.sh` doit rester en fins de ligne LF (voir `.gitattributes`).
 - **Chaque écran a son guide** : un nouvel écran demande un fichier `app/templates/aide/<blueprint>_<vue>.html` (le bouton « Aide » n'apparaît que s'il existe) et son ajout dans `test_chaque_ecran_a_son_guide`. Un changement de comportement demande de mettre le guide à jour.
 
@@ -131,7 +135,9 @@ docker compose up -d --build              # production (après avoir rempli .env
 
 ## Prochaines étapes possibles
 
-1. Lancer l'application en local et la tester sur un vrai téléphone (`--host 0.0.0.0` et l'IP du PC dans `BASE_URL`).
-2. Faire valider par le propriétaire les choix listés plus haut, et trancher la durée d'ouverture.
-3. Déployer sur un VPS : Docker, Nginx et certbot.
-4. Si l'étude démarre, ajouter Flask-Migrate avant toute évolution du schéma.
+1. Tester sur iPhone (Safari) : champ date, panneau d'aide, reprise d'un brouillon en mode avion. Seul Chromium a été vérifié.
+2. Faire valider par le propriétaire les choix listés plus haut et le texte des guides chirurgien, et trancher la durée d'ouverture.
+3. **Proposition en attente de décision** : questionnaire administrable et versionné par l'administratrice (approche hybride proposée : champs du protocole figés dans le code, questions complémentaires configurables et versionnées). Rien n'est commencé.
+4. Options proposées, non retenues pour l'instant : un QR code par chirurgien (verrou du nom plus fort), suppression de la copie locale des brouillons.
+5. Déployer sur un VPS : Docker, Nginx et certbot.
+6. Si l'étude démarre, ajouter Flask-Migrate avant toute évolution du schéma.
