@@ -44,7 +44,8 @@
 {% endmacro %}
 
 {% macro dimensions(prefixe, valeurs, erreurs, label) %}
-<div class="champ dims" id="champ-{{ prefixe }}">
+{% set en_erreur = erreurs.get(prefixe ~ '_longueur') or erreurs.get(prefixe ~ '_largeur') or erreurs.get(prefixe ~ '_epaisseur') %}
+<div class="champ dims{% if en_erreur %} en-erreur{% endif %}" id="champ-{{ prefixe }}">
   <span class="etiquette">{{ label }}</span>
   <div class="trio">
     {% for dim, lib in [("longueur", "Longueur"), ("largeur", "Largeur"), ("epaisseur", "Épaisseur")] %}

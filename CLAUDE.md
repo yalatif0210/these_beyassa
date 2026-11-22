@@ -9,7 +9,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 
 ## État actuel
 
-- Le code est complet et fonctionne : 46 tests pytest passent (`python -m pytest`).
+- Le code est complet et fonctionne : 60 tests pytest passent (`python -m pytest`).
 - Les écrans ont été vérifiés sur mobile (390 px) et sur ordinateur, avec des données fictives.
 - Rien n'est encore déployé. L'application a été lancée en local (`--host` sur l'IP Wi-Fi du PC) et testée sur téléphone.
 - Dépôt git sur la branche `main`, publié sur GitHub : `origin` = https://github.com/yalatif0210/these_beyassa.git. Auteur configuré localement : `yalatif0210`.
@@ -27,7 +27,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 - L'étude ne concerne que des **garçons** : le sexe n'est **pas demandé**. La colonne `patients.sexe` existe toujours mais reçoit « M » d'office (`R.SEXE_ETUDE`, jamais lu du formulaire) et n'est plus exportée.
 - L'étude porte sur les enfants de 1 à 10 ans. L'application ne doit **pas bloquer** la saisie selon l'âge (simple aide affichée).
 - Consentement des parents : oui ou non.
-- L'enfant est identifié par ses **initiales** uniquement, jamais par son nom. Un numéro `HYD-001`, `HYD-002`… est attribué automatiquement et noté dans le dossier papier.
+- L'enfant est identifié par ses **initiales** uniquement, jamais par son nom. Un numéro `HYD-001`, `HYD-002`… est attribué automatiquement (plus grand numéro existant + 1, jamais l'id) et noté dans le dossier papier.
 - Le type d'hydrocèle (communicante ou non) est déterminé à l'examen physique lors de la consultation initiale.
 - Niveau scolaire, liste confirmée : Non scolarisé, Préscolaire, CI, CP, CE1, CE2, CM1, CM2.
 
@@ -53,7 +53,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 
 **Données**
 - Le comité d'éthique et la faculté n'imposent pas de règle de stockage.
-- Export CSV, une ligne par patient, en deux formats : Excel (séparateur `;`, virgule décimale, BOM UTF-8) ou R/SPSS (séparateur `,`, point décimal). Les oui/non sont codés 1/0. Un dictionnaire des variables est fourni.
+- Export d'une ligne par patient, en deux formats. **Excel : classeur .xlsx** (décision du 22/11/2026, à la place de l'ancien CSV à point-virgule) avec des valeurs typées (nombres, vraies dates au format JJ/MM/AAAA, textes) et le dictionnaire en deuxième feuille. **R/SPSS/Stata : CSV** (séparateur `,`, point décimal, dates ISO, UTF-8 sans BOM), avec le dictionnaire au même format. Les oui/non sont codés 1/0.
 
 ## Choix faits par Claude, encore à valider avec le propriétaire
 
@@ -70,7 +70,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 - Pages générées côté serveur (Jinja2), **sans framework JavaScript** : un formulaire léger sur mobile. Le peu de JavaScript utilisé est en ligne dans les templates.
 - PostgreSQL 16 en production (`DATABASE_URL`), SQLite dans `instance/` par défaut en local.
 - Les tables sont créées par `db.create_all()` au démarrage. **Il n'y a pas de migrations** : tout changement de colonne en cours d'étude demande une migration manuelle ou l'ajout de Flask-Migrate. La base SQLite locale a déjà reçu à la main `chirurgiens.generation_session` et `brouillons.seq` (`ALTER TABLE ... ADD COLUMN`).
-- Docker : Gunicorn avec `--preload` et 2 workers. Un service `sauvegarde` fait un `pg_dump` quotidien, conservé 30 jours. Nginx assure le HTTPS (`deploy/nginx.conf`).
+- Docker : Gunicorn avec `--preload` et 2 workers. `create_app` ferme ses connexions (`db.engine.dispose()`) après l'initialisation pour que les workers n'héritent pas du socket PostgreSQL du maître. Un service `sauvegarde` fait un `pg_dump` quotidien, conservé 30 jours. Nginx assure le HTTPS (`deploy/nginx.conf`).
 
 ```
 app/__init__.py      create_app, configuration par variables d'environnement, en-têtes de sécurité, commandes CLI
@@ -80,7 +80,7 @@ app/planning.py      date prévue, fenêtre, statut (realisee, non_realisee, a_v
 app/saisie.py        classe Lecteur : lecture et validation des formulaires, partagée entre chirurgien et admin
 app/chirurgien.py    blueprint racine : accès par QR code, choix du nom, recherche, création, saisies
 app/admin.py         blueprint /admin : tableau de bord, fiches, corrections, chirurgiens, paramètres, QR code, export
-app/export.py        colonnes() = source unique pour le CSV et pour le dictionnaire des variables
+app/export.py        colonnes() = source unique pour le .xlsx, le CSV et le dictionnaire des variables (openpyxl)
 app/templates/forms/ formulaires partagés (_inclusion, _intervention, _visite), inclus via formulaire.html
 app/templates/_brouillon_*.html  sauvegarde automatique (bandeau de reprise, pied, script)
 app/templates/_macros.html  macros de champs (radios en « pilules », cases, échelle de douleur, dimensions)
@@ -96,9 +96,12 @@ app/templates/aide/   guide d'utilisation de chaque écran, nommé <blueprint>_<
 - **Nom verrouillé** : dès la première saisie enregistrée depuis un téléphone (`session["nom_verrouille"]`), ce téléphone ne peut plus changer de nom. L'administratrice peut « libérer les téléphones » d'un chirurgien (`Chirurgien.generation_session` incrémenté : les sessions qui portent une ancienne valeur doivent rechoisir le nom). Effacer les données du navigateur et rescanner le QR code contourne le verrou : c'est une protection contre l'erreur, pas contre la malveillance.
 - **Brouillons** : chaque formulaire chirurgien est sauvegardé automatiquement sur le serveur (table `brouillons`, une ligne par chirurgien et par formulaire, clé `nouveau`, `intervention:HYD-001` ou `visite:HYD-001:J7`), 1,5 s après chaque modification et à la mise en arrière-plan (`sendBeacon`). Il est restauré à la réouverture et « clos » dans la même transaction que l'enregistrement ; le champ `_page` fait ignorer une sauvegarde tardive de la même page. La suppression d'un patient efface ses brouillons (son numéro peut être réattribué). Les brouillons ne sont pas exportés.
 - La recherche n'affiche ni la voie d'abord ni aucune donnée clinique.
-- Les chirurgiens ne peuvent pas modifier une saisie existante. Seule l'administratrice corrige.
+- Les chirurgiens ne peuvent pas modifier une saisie existante. Seule l'administratrice corrige. Ses corrections gardent les dates cohérentes (consultation ≤ intervention ≤ visites **réalisées**). Une visite réalisée qu'elle repasse en « non réalisée » perd ses données cliniques et son auteur (`vider_visite`) ; une visite déjà non réalisée n'est pas touchée (renvoi). Une visite non réalisée qu'elle saisit comme réalisée n'est plus attribuée au chirurgien qui avait déclaré l'absence. Une simple correction garde l'auteur d'origine. **Ces règles sont à valider par le propriétaire.**
 - En-têtes `X-Robots-Tag: noindex`, `X-Frame-Options`, `nosniff`, `Cache-Control: no-store`.
-- Limites : recherche 30/min, accès 20/min, connexion admin 10/min. Le stockage `memory://` est propre à chaque worker. Passer à Redis si besoin.
+- Limites : recherche 30/min et brouillon 120/min **par téléphone** (`cle_limite` : identifiant `session["appareil"]` tiré au scan du QR code ; ni l'IP, partagée par les téléphones du Wi-Fi du service, ni le chirurgien, qui peut saisir sur plusieurs téléphones), accès 20/min et connexion admin 10/min par IP. Le stockage `memory://` est propre à chaque worker. Passer à Redis si besoin.
+- Session administratrice limitée à 12 h (`session["admin_depuis"]`), alors que celle des chirurgiens dure un an.
+- Jetons comparés par `jetons_egaux` (octets UTF-8) : un lien abîmé avec un accent donne 403, pas 500.
+- Export Excel (.xlsx) : chaque texte est écrit avec le type texte forcé (`data_type = "s"`). Sans cela, openpyxl fait une formule de tout texte qui commence par `=`. Les caractères de contrôle, interdits dans un xlsx, sont retirés. Vérifié dans Excel 16 : aucune formule, aucun `#NOM?`, textes repris à l'identique, sans apostrophe. Le CSV R/SPSS reste brut (ne pas l'ouvrir dans Excel). Les colonnes cliniques d'une visite non réalisée sont exportées vides, quoi qu'il reste en base.
 - Nginx n'écrit pas `/acces/` dans ses journaux.
 - `COOKIE_SECURISE=true` en production (HTTPS obligatoire), `false` en local en HTTP.
 
@@ -107,7 +110,7 @@ app/templates/aide/   guide d'utilisation de chaque écran, nommé <blueprint>_<
 Toute requête qui écrit doit pouvoir être rejouée sans effet en double : double appui, rechargement, renvoi du navigateur, réponse perdue pendant une coupure réseau.
 - **Saisies chirurgien** (patient, intervention, visite, visite non réalisée) : le formulaire porte un jeton d'envoi `_page` (16 hex, généré à l'affichage). La saisie réussie enregistre ce jeton dans la table `envois` **dans la même transaction** ; un envoi rejoué renvoie vers `Envoi.resultat` sans rien créer. Envois simultanés : la contrainte unique (jeton, `interventions.patient_id`, `uq_visite_patient_echeance`) lève `IntegrityError`, on annule et on renvoie vers le résultat existant.
 - **Post/Redirect/Get** : toute création réussie se termine par une redirection (`/patient/<numero>/enregistre` pour un nouveau patient), jamais par l'affichage direct d'une page.
-- **Brouillons** : `_seq` (horodatage ms de la modification sur le téléphone) ; le serveur ignore une sauvegarde plus ancienne ou déjà reçue. Une seule sauvegarde en vol ; copie locale « en attente » (localStorage, clé par chirurgien et formulaire) effacée dès la confirmation du serveur, jamais restaurée si la page a déjà été enregistrée.
+- **Brouillons** : `_seq` (horodatage ms de la modification sur le téléphone) ; le serveur ignore une sauvegarde plus ancienne ou déjà reçue. Une seule sauvegarde en vol ; copie locale « en attente » (localStorage, clé par chirurgien et formulaire) effacée dès la confirmation du serveur, jamais restaurée si la page a déjà été enregistrée. **Seule une réponse 204 vaut confirmation** : une session expirée renvoie une redirection que `fetch` suit (réponse 200), ce n'est pas un enregistrement. Le script distingue pas de réseau, 429 et refus du serveur.
 - **Actions admin** : envoyer l'état visé ou l'élément précis, jamais une bascule. Activer/désactiver envoie `actif=0/1` ; « libérer » envoie la `generation_session` affichée ; nouveau QR envoie le `jeton_actuel` affiché ; supprimer un patient et effacer une visite envoient l'`empreinte` (id + date de création : SQLite réutilise l'id d'une ligne supprimée et un numéro de patient peut être réattribué). Les mises à jour complètes (paramètres, corrections) sont idempotentes par nature.
 - Le bouton d'envoi est désactivé pendant l'envoi (`base.html`), mais ce n'est qu'un confort : la garantie est côté serveur.
 

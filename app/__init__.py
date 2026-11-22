@@ -66,6 +66,11 @@ def create_app(config=None):
         db.create_all()
         Parametres.courants()
         _creer_admin_depuis_env(app)
+        # Avec gunicorn --preload, ce code tourne dans le processus maître : on ferme ses connexions
+        # pour que chaque worker ouvre les siennes au lieu de partager le même socket PostgreSQL.
+        # (Pas pour une base SQLite en mémoire, les tests : la fermer l'effacerait.)
+        if db.engine.url.database not in (None, "", ":memory:"):
+            db.engine.dispose()
 
     @app.context_processor
     def injecter():

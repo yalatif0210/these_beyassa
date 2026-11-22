@@ -4,9 +4,9 @@
 <section class="carte">
   <p>{{ nb }} patient(s), une ligne par patient, {{ nb_colonnes }} colonnes (inclusion, intervention, puis J7, M1, M3 et M6).</p>
   <div class="actions colonne-gauche">
-    <a class="bouton principal" href="{{ url_for('admin.export_donnees', style='excel') }}">Pour Excel (séparateur ; et virgule décimale)</a>
-    <a class="bouton secondaire" href="{{ url_for('admin.export_donnees', style='standard') }}">Pour R, SPSS ou Stata (séparateur , et point décimal)</a>
-    <a class="bouton secondaire" href="{{ url_for('admin.export_dictionnaire') }}">Dictionnaire des variables</a>
+    <a class="bouton principal" href="{{ url_for('admin.export_excel') }}">Pour Excel (.xlsx, dictionnaire inclus)</a>
+    <a class="bouton secondaire" href="{{ url_for('admin.export_donnees') }}">Pour R, SPSS ou Stata (CSV)</a>
+    <a class="bouton secondaire" href="{{ url_for('admin.export_dictionnaire') }}">Dictionnaire des variables (CSV)</a>
   </div>
   <p class="aide">Oui/non sont codés 1/0. Une case vide signifie « non saisi ». Les volumes sont calculés avec le coefficient choisi dans les paramètres.</p>
 </section>

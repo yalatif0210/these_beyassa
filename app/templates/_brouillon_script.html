@@ -4,6 +4,8 @@
    - chaque modification reçoit un numéro croissant (_seq, horodatage en ms) ; le serveur ignore
      une sauvegarde plus ancienne ou déjà reçue : l'ordre d'arrivée et les renvois sont sans effet ;
    - une seule sauvegarde en vol à la fois ; la suivante part quand la précédente a répondu ;
+   - seule la réponse 204 du serveur confirme une sauvegarde (une redirection vers l'accueil, quand
+     l'accès a expiré, n'en est pas une) ;
    - tant que le serveur n'a pas confirmé, une copie « en attente » est gardée sur le téléphone
      (localStorage) ; elle est effacée dès la confirmation, et renvoyée au retour du réseau ou à la
      réouverture du formulaire si elle est plus récente que le brouillon du serveur ;
@@ -52,6 +54,11 @@
       else if (el.type === 'checkbox') el.checked = Object.prototype.hasOwnProperty.call(o, el.name);
       else el.value = o[el.name] !== undefined ? o[el.name] : '';
     });
+    // Les zones conditionnelles (ex. dimensions de l'épanchement) se recalculent sur « change ».
+    Array.prototype.forEach.call(f.elements, function (el) {
+      if (el.name && !TECHNIQUES[el.name] && el.type !== 'hidden' && el.type !== 'submit')
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
   }
 
   // ------------------------------------------------------------------ envoi
@@ -61,20 +68,32 @@
     var seq = seqCourant;
     enVol = true;
     afficher('en-cours', 'cloud_upload', 'Sauvegarde…');
+    var delai = 1500;
     fetch(url, { method: 'POST', body: donnees(seq), credentials: 'same-origin' })
       .then(function (r) {
-        if (!r.ok) throw new Error(String(r.status));
+        // Seul 204 confirme l'enregistrement. Une session expirée renvoie vers la page d'accueil
+        // (redirection suivie, réponse 200) : ce n'est PAS une confirmation, la copie locale reste.
+        if (r.status !== 204) { var e = new Error(String(r.status)); e.statut = r.status; throw e; }
         seqConfirme = Math.max(seqConfirme, seq);
         var l = lireLocal();
         if (l && l.seq <= seqConfirme) effacerLocal();
         afficher('ok', 'cloud_done', 'Brouillon sauvegardé à ' + heure() + '.');
       })
-      .catch(function () {
-        afficher('erreur', 'cloud_off', 'Pas de réseau : la saisie est gardée sur ce téléphone et sera envoyée dès le retour de la connexion.');
+      .catch(function (e) {
+        if (e && e.statut === 429) {
+          delai = 15000;
+          afficher('erreur', 'hourglass_empty', 'Sauvegardes trop rapprochées : nouvel essai dans quelques secondes. La saisie reste gardée sur ce téléphone.');
+        } else if (e && e.statut) {
+          delai = 30000;
+          afficher('erreur', 'error', 'Le serveur n\'a pas accepté la sauvegarde (accès expiré ?). La saisie reste gardée sur ce téléphone : rechargez la page ou rescannez le QR code.');
+        } else {
+          delai = navigator.onLine === false ? 10000 : 5000;
+          afficher('erreur', 'cloud_off', 'Pas de réseau : la saisie est gardée sur ce téléphone et sera envoyée dès le retour de la connexion.');
+        }
       })
       .then(function () {
         enVol = false;
-        if (seqCourant > seqConfirme && !soumis) minuterie = setTimeout(sauver, navigator.onLine === false ? 10000 : 1500);
+        if (seqCourant > seqConfirme && !soumis) minuterie = setTimeout(sauver, delai);
       });
   }
 

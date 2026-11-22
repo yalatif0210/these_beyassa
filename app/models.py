@@ -1,3 +1,4 @@
+import hmac
 import secrets
 from datetime import datetime, timezone
 
@@ -13,6 +14,13 @@ def maintenant():
 
 def nouveau_jeton():
     return secrets.token_urlsafe(24)
+
+
+def jetons_egaux(a, b):
+    """Comparaison à temps constant ; un jeton non ASCII (lien abîmé) est simplement différent."""
+    if not a or not b:
+        return False
+    return hmac.compare_digest(str(a).encode("utf-8"), str(b).encode("utf-8"))
 
 
 def empreinte(obj):

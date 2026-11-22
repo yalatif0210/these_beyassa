@@ -1,11 +1,11 @@
 <h2>Exporter les données</h2>
-<p class="chapeau">Un fichier CSV avec une ligne par patient : inclusion, intervention, puis J7, M1, M3 et M6.</p>
+<p class="chapeau">Une ligne par patient : inclusion, intervention, puis J7, M1, M3 et M6.</p>
 
 <h3>Quel fichier choisir ?</h3>
 <dl>
-  <dt>Pour Excel</dt><dd>Séparateur point-virgule et virgule décimale : s'ouvre directement avec un double-clic dans un Excel français.</dd>
-  <dt>Pour R, SPSS ou Stata</dt><dd>Séparateur virgule et point décimal : le format attendu par les logiciels de statistiques.</dd>
-  <dt>Dictionnaire des variables</dt><dd>Le sens de chaque colonne et ses codes. À joindre à toute transmission des données.</dd>
+  <dt>Pour Excel (.xlsx)</dt><dd>S'ouvre directement, quels que soient les réglages de l'ordinateur. Les nombres et les dates sont de vrais nombres et de vraies dates (tri, filtres, calculs). La deuxième feuille contient le dictionnaire des variables.</dd>
+  <dt>Pour R, SPSS ou Stata (CSV)</dt><dd>Séparateur virgule, point décimal, dates au format AAAA-MM-JJ, encodage UTF-8 : le format attendu par les logiciels de statistiques. Ne l'ouvrez pas dans Excel : prenez plutôt le fichier .xlsx.</dd>
+  <dt>Dictionnaire des variables (CSV)</dt><dd>Le sens de chaque colonne et ses codes, au même format que le CSV. À joindre à toute transmission des données.</dd>
 </dl>
 
 <h3>Lire les données</h3>
@@ -13,6 +13,8 @@
   <li>Oui / non sont codés <code>1</code> / <code>0</code>.</li>
   <li>Une case vide signifie « non saisi ».</li>
   <li>Les volumes sont calculés avec le coefficient choisi dans les Paramètres.</li>
+  <li>Une visite non réalisée n'a que son statut : ses autres colonnes sont vides.</li>
+  <li>Les textes libres sont repris tels quels, même s'ils commencent par <code>=</code> ou <code>-</code> : le fichier Excel les enregistre comme du texte, jamais comme une formule.</li>
 </ul>
 
 <div class="encadre attention"><span class="icone" aria-hidden="true">lock</span>

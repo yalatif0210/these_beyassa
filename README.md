@@ -19,7 +19,7 @@ Application web de collecte de données pour la thèse de Dr BEYASSA:
 - Liste des chirurgiens (ajout, désactivation).
 - Paramètres : marge autour des visites, dates d'ouverture et de fermeture, objectif de patients, coefficient de volume.
 - QR code : affiche imprimable, et génération d'un nouveau QR code si l'ancien a circulé.
-- Export CSV (une ligne par patient) pour Excel ou pour R, SPSS et Stata, avec le dictionnaire des variables.
+- Export d'une ligne par patient : classeur Excel (.xlsx, valeurs typées, dictionnaire en deuxième feuille) ou CSV pour R, SPSS et Stata, avec le dictionnaire des variables.
 
 ## Lancer en local (Windows, PowerShell)
 
@@ -110,7 +110,7 @@ app/
   saisie.py         lecture et contrôle des formulaires
   chirurgien.py     espace chirurgien (QR code)
   admin.py          espace administrateur
-  export.py         export CSV et dictionnaire des variables
+  export.py         export Excel (.xlsx) et CSV, dictionnaire des variables
   templates/        pages HTML
   static/style.css  mise en forme
 tests/              tests automatisés

@@ -5,18 +5,19 @@ Une saisie réussie enregistre ce jeton (table `envois`) dans la même transacti
 Un envoi rejoué (double appui, rechargement, réponse perdue pendant une coupure réseau)
 est reconnu et renvoie vers le résultat déjà enregistré, sans rien créer en double.
 """
-import hmac
 import json
 import re
 import secrets
 from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import func, or_
+from flask_limiter.util import get_remote_address
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from . import limiter
-from .models import Brouillon, Chirurgien, Envoi, Intervention, Parametres, Patient, Visite, db, maintenant
+from .models import (Brouillon, Chirurgien, Envoi, Intervention, Parametres, Patient, Visite, db, jetons_egaux,
+                     maintenant)
 from .planning import etats_patient, hors_fenetre
 from .referentiels import CODES_ECHEANCES, LIBELLES_ECHEANCE
 from .saisie import lire_intervention, lire_patient, lire_visite, valeurs_formulaire
@@ -36,7 +37,26 @@ MESSAGE_VERROU = ("Votre nom est verrouillé sur ce téléphone depuis votre pre
 
 def _acces_valide():
     jeton = session.get("acces")
-    return bool(jeton) and hmac.compare_digest(jeton, Parametres.courants().jeton_acces)
+    return jetons_egaux(jeton, Parametres.courants().jeton_acces)
+
+
+def cle_limite():
+    """Compteur de limite par téléphone.
+
+    Ni l'IP (les téléphones du service sortent souvent par la même IP publique), ni le chirurgien
+    (il peut saisir sur plusieurs téléphones à la fois) : un identifiant d'appareil tiré au scan du
+    QR code et gardé dans la session signée.
+    """
+    appareil = session.get("appareil")
+    if appareil:
+        return f"appareil:{appareil}"
+    cid = session.get("chirurgien_id")
+    return f"chirurgien:{cid}" if cid else get_remote_address()
+
+
+def _identifier_appareil():
+    if "appareil" not in session:
+        session["appareil"] = secrets.token_hex(8)
 
 
 def chirurgien_courant():
@@ -67,6 +87,7 @@ def verifier_acces():
         return None
     if not _acces_valide():
         return redirect(url_for("chirurgien.acces_requis"))
+    _identifier_appareil()  # sessions ouvertes avant l'existence de cet identifiant
     if chirurgien_courant() is None:
         return redirect(url_for("chirurgien.choisir_nom", suite=request.full_path))
     return None
@@ -85,10 +106,11 @@ def contexte():
 @bp.route("/acces/<jeton>")
 @limiter.limit("20 per minute")
 def acces(jeton):
-    if not hmac.compare_digest(jeton, Parametres.courants().jeton_acces):
+    if not jetons_egaux(jeton, Parametres.courants().jeton_acces):
         return render_template("chirurgien/acces_requis.html", invalide=True), 403
     session.permanent = True
     session["acces"] = jeton
+    _identifier_appareil()
     # Redirection : le jeton ne reste pas dans la barre d'adresse.
     return redirect(url_for("chirurgien.accueil"))
 
@@ -248,7 +270,7 @@ def _reprendre_page(ctx):
 
 
 @bp.route("/brouillon", methods=["POST"])
-@limiter.limit("120 per minute")
+@limiter.limit("120 per minute", key_func=cle_limite)
 def sauver_brouillon():
     cle = request.form.get("_cle", "")
     if not MOTIF_CLE.match(cle):
@@ -282,7 +304,7 @@ def accueil():
 
 
 @bp.route("/recherche")
-@limiter.limit("30 per minute")
+@limiter.limit("30 per minute", key_func=cle_limite)
 def recherche():
     q = (request.args.get("q") or "").strip().upper().replace(".", "").replace(" ", "")
     resultats = []
@@ -304,8 +326,8 @@ def _patient_ou_404(numero):
 
 
 def _prochain_numero():
-    dernier = db.session.query(func.max(Patient.id)).scalar() or 0
-    n = dernier + 1
+    # Le numéro suit le plus grand numéro existant (et non l'id : une séquence PostgreSQL laisse des trous).
+    n = max((int(num[4:]) for (num,) in db.session.query(Patient.numero) if num[4:].isdigit()), default=0) + 1
     while Patient.query.filter_by(numero=f"HYD-{n:03d}").first():
         n += 1
     return f"HYD-{n:03d}"

@@ -1,5 +1,9 @@
+import io
 from datetime import date, timedelta
 
+from openpyxl import load_workbook
+
+from app.export import TYPE_XLSX
 from app.models import Parametres, Patient, Visite, db
 
 INCLUSION = {
@@ -237,19 +241,40 @@ def test_chirurgiens(app, adm):
     assert "existe déjà" in r.get_data(as_text=True)
 
 
+def lire_xlsx(adm):
+    r = adm.get("/admin/export/donnees.xlsx")
+    assert r.status_code == 200 and r.mimetype == TYPE_XLSX
+    assert "attachment; filename=beyassa_donnees_" in r.headers["Content-Disposition"]
+    return load_workbook(io.BytesIO(r.data))
+
+
+def ligne_xlsx(wb, n=2):
+    ws = wb["Données"]
+    entete = [c.value for c in ws[1]]
+    return dict(zip(entete, [c.value for c in ws[n]])), ws
+
+
 def test_export(adm, chir):
     creer_patient(chir)
     chir.post("/patient/HYD-001/intervention", data=intervention())
-    r = adm.get("/admin/export/donnees.csv?style=excel")
-    txt = r.get_data(as_text=True)
-    assert txt.startswith("﻿numero;initiales")
-    lignes = txt.strip().splitlines()
-    assert len(lignes) == 2
-    assert len(lignes[0].split(";")) == len(lignes[1].split(";"))
-    std = adm.get("/admin/export/donnees.csv?style=standard").get_data(as_text=True)
+    wb = lire_xlsx(adm)
+    assert wb.sheetnames == ["Données", "Dictionnaire"]
+    valeurs, ws = ligne_xlsx(wb)
+    assert ws.max_row == 2 and ws.freeze_panes == "B2"
+    # Valeurs typées : nombres, dates et codes 1/0, pas du texte.
+    assert valeurs["numero"] == "HYD-001" and valeurs["age_ans"] == 4
+    assert valeurs["consentement_parental"] == 1 and valeurs["duree_intervention_min"] == 25
+    assert valeurs["date_intervention"].date() == date.today() - timedelta(days=95)
+    assert valeurs["J7_statut"] is None  # visite non saisie : cellule vide
+    dico = [c[0].value for c in wb["Dictionnaire"].iter_rows(min_row=2)]
+    assert dico == [c.value for c in ws[1]]  # même source : colonnes()
+
+    std = adm.get("/admin/export/donnees.csv").get_data(as_text=True)
     assert std.startswith("numero,initiales")
-    dico = adm.get("/admin/export/dictionnaire.csv").get_data(as_text=True)
-    assert "M6_atrophie" in dico and "voie_abord" in dico
+    lignes = std.strip().splitlines()
+    assert len(lignes) == 2 and (date.today() - timedelta(days=95)).isoformat() in lignes[1]
+    dico_csv = adm.get("/admin/export/dictionnaire.csv").get_data(as_text=True)
+    assert dico_csv.startswith("variable,description") and "M6_atrophie" in dico_csv
 
 
 # ------------------------------------------------- verrouillage du nom
@@ -530,3 +555,166 @@ def test_sexe_non_demande_toujours_masculin(app, chir):
     creer_patient(chir, sexe="F")  # une valeur forgée est ignorée
     with app.app_context():
         assert {p.sexe for p in Patient.query.all()} == {"M"}
+
+
+# ------------------------------------------------------- corrections de la revue
+
+J7 = {"date_visite": (date.today() - timedelta(days=88)).isoformat(), "douleur_score": "4",
+      "douleur_evaluateur": "enfant", "complications": "hématome", "cicatrice_cheloide": "on"}
+
+
+def test_jeton_non_ascii_refuse_sans_erreur(app):
+    assert app.test_client().get("/acces/%C3%A9").status_code == 403
+
+
+def test_admin_non_realisee_efface_les_donnees_cliniques(app, chir, adm):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention())
+    chir.post("/patient/HYD-001/visite/J7", data=J7)
+    adm.post("/admin/patient/HYD-001/visite/J7", data={"action": "non_realisee"})
+    with app.app_context():
+        v = Patient.query.one().visite("J7")
+        assert v.statut == "non_realisee"
+        assert v.douleur_score is None and v.complications is None and v.date_visite is None
+        assert v.cicatrice_cheloide is False
+        assert v.chirurgien_id is None  # l'absence est déclarée par l'administratrice
+
+
+def test_admin_non_realisee_garde_l_auteur_d_une_absence_deja_declaree(app, chir, adm):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention())
+    chir.post("/patient/HYD-001/visite/J7", data={"action": "non_realisee"})
+    adm.post("/admin/patient/HYD-001/visite/J7", data={"action": "non_realisee"})
+    with app.app_context():
+        assert Patient.query.one().visite("J7").chirurgien.nom == "Dr Test"
+
+
+def test_admin_saisit_une_visite_declaree_absente(app, chir, adm):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention())
+    chir.post("/patient/HYD-001/visite/J7", data={"action": "non_realisee"})
+    assert adm.post("/admin/patient/HYD-001/visite/J7", data=J7).status_code == 302
+    with app.app_context():
+        v = Patient.query.one().visite("J7")
+        assert v.statut == "realisee" and v.douleur_score == 4 and v.chirurgien_id is None
+
+
+def test_correction_admin_d_une_visite_realisee_garde_l_auteur(app, chir, adm):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention())
+    chir.post("/patient/HYD-001/visite/J7", data=J7)
+    adm.post("/admin/patient/HYD-001/visite/J7", data={**J7, "douleur_score": "2"})
+    with app.app_context():
+        v = Patient.query.one().visite("J7")
+        assert v.douleur_score == 2 and v.chirurgien.nom == "Dr Test"
+
+
+def test_visite_non_realisee_ancienne_ignoree_par_dates_et_export(app, chir, adm):
+    """Visite repassée en non réalisée avant la correction : sa date et ses données ne comptent plus."""
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention(95))
+    chir.post("/patient/HYD-001/visite/J7", data=J7)
+    with app.app_context():
+        Patient.query.one().visite("J7").statut = "non_realisee"  # données restées en base
+        db.session.commit()
+    r = adm.post("/admin/patient/HYD-001/intervention", data=intervention(80))
+    assert r.status_code == 302
+    valeurs, _ = ligne_xlsx(lire_xlsx(adm))
+    assert valeurs["J7_statut"] == "non_realisee" and valeurs["J7_chirurgien"] == "Dr Test"
+    assert valeurs["J7_douleur"] is None and valeurs["J7_date"] is None and valeurs["J7_complications"] is None
+    assert valeurs["J7_cicatrice_cheloide"] is None
+
+
+def test_corrections_admin_gardent_les_dates_coherentes(app, chir, adm):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention(95))
+    chir.post("/patient/HYD-001/visite/J7", data=J7)
+    r = adm.post("/admin/patient/HYD-001/intervention", data=intervention(10))
+    assert "ne peut pas être postérieure à une visite" in r.get_data(as_text=True)
+    r = adm.post("/admin/patient/HYD-001/modifier",
+                 data={**INCLUSION, "date_consultation": (date.today() - timedelta(days=5)).isoformat()})
+    assert "la consultation ne peut pas être postérieure" in r.get_data(as_text=True)
+    with app.app_context():
+        p = Patient.query.one()
+        assert p.intervention.date_intervention == date.today() - timedelta(days=95)
+
+
+def test_export_excel_garde_les_textes_tels_quels(chir, adm):
+    """Un texte libre n'est jamais une formule dans le .xlsx, et il n'est pas modifié."""
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data={**intervention(), "complications_perop": '=HYPERLINK("x")'})
+    chir.post("/patient/HYD-001/visite/J7", data={**J7, "complications": "- léger hématome\n- 2+3",
+                                                   "cicatrice_aspect": "propre\x0b, sèche"})
+    valeurs, ws = ligne_xlsx(lire_xlsx(adm))
+    assert valeurs["complications_perop"] == '=HYPERLINK("x")'
+    assert valeurs["J7_complications"] == "- léger hématome\n- 2+3"
+    assert valeurs["J7_cicatrice_aspect"] == "propre, sèche"  # caractère de contrôle retiré
+    entete = [c.value for c in ws[1]]
+    for nom in ("complications_perop", "J7_complications"):
+        assert ws.cell(2, entete.index(nom) + 1).data_type == "s"
+    std = adm.get("/admin/export/donnees.csv").get_data(as_text=True)
+    assert '=HYPERLINK(""x"")' in std  # CSV R/SPSS : brut (guillemets doublés par le format CSV)
+
+
+def test_numero_suit_le_plus_grand_numero(app, chir):
+    with app.app_context():
+        db.session.add(Patient(id=50, numero="HYD-007", initiales="ZZ", age_ans=3, sexe="M",
+                               niveau_scolaire="CI", consentement_parental=True, date_consultation=date.today(),
+                               type_hydrocele="communicante", cote="droit"))
+        db.session.commit()
+    creer_patient(chir)
+    with app.app_context():
+        assert Patient.query.filter_by(initiales="AD").one().numero == "HYD-008"
+
+
+def test_session_admin_expire_apres_12_heures(adm):
+    assert adm.get("/admin/").status_code == 200
+    with adm.session_transaction() as s:
+        s["admin_depuis"] -= 13 * 3600
+    r = adm.get("/admin/")
+    assert r.status_code == 302 and "/admin/connexion" in r.location
+
+
+def test_limite_comptee_par_telephone(app, jeton):
+    from flask import session
+
+    from app.chirurgien import cle_limite
+    with app.test_request_context("/brouillon", environ_base={"REMOTE_ADDR": "10.0.0.1"}):
+        assert cle_limite() == "10.0.0.1"
+        session["chirurgien_id"] = 3
+        assert cle_limite() == "chirurgien:3"
+        session["appareil"] = "abc"
+        assert cle_limite() == "appareil:abc"
+    # Deux téléphones du même chirurgien ont chacun leur compteur.
+    appareils = set()
+    for _ in range(2):
+        c = app.test_client()
+        c.get(f"/acces/{jeton}")
+        with c.session_transaction() as s:
+            appareils.add(s["appareil"])
+    assert len(appareils) == 2
+
+
+def test_session_ouverte_avant_identifiant_d_appareil(app, chir):
+    with chir.session_transaction() as s:
+        del s["appareil"]
+    chir.get("/")
+    with chir.session_transaction() as s:
+        assert len(s["appareil"]) == 16
+
+
+def test_brouillon_sans_acces_ne_repond_pas_204(app, chir, jeton):
+    """Le script ne confirme qu'un 204 : une session expirée doit donner autre chose."""
+    assert chir.post("/brouillon", data={"_cle": "nouveau", "_seq": "1", "initiales": "AB"}).status_code == 204
+    with app.app_context():
+        Parametres.courants().jeton_acces = "nouveau-jeton"
+        db.session.commit()
+    r = chir.post("/brouillon", data={"_cle": "nouveau", "_seq": "2", "initiales": "ABC"})
+    assert r.status_code == 302
+
+
+def test_dimension_invalide_surlignee(chir):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention())
+    r = chir.post("/patient/HYD-001/visite/M3", data={"echo_testicule_d_longueur": "12,5,3"})
+    assert 'class="champ dims en-erreur" id="champ-echo_testicule_d"' in r.get_data(as_text=True)

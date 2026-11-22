@@ -111,6 +111,11 @@ def lire_patient(patient, form):
     niveau = L.choix("niveau_scolaire", R.NIVEAUX_SCOLAIRES)
     consentement = L.oui_non("consentement_parental")
     date_consult = L.jour("date_consultation")
+    interv = getattr(patient, "intervention", None)
+    if date_consult and interv is not None and interv.date_intervention and date_consult > interv.date_intervention:
+        L.erreurs["date_consultation"] = (
+            f"L'intervention est enregistrée le {interv.date_intervention:%d/%m/%Y} : "
+            "la consultation ne peut pas être postérieure.")
     type_h = L.choix("type_hydrocele", R.TYPES_HYDROCELE)
     cote = L.choix("cote", R.COTES)
     if not L.erreurs:
@@ -132,6 +137,11 @@ def lire_intervention(intervention, form, patient):
     d = L.jour("date_intervention")
     if d and patient.date_consultation and d < patient.date_consultation:
         L.erreurs["date_intervention"] = "L'intervention ne peut pas précéder la consultation d'inclusion."
+    dates_visites = [v.date_visite for v in patient.visites if v.statut == "realisee" and v.date_visite]
+    if d and dates_visites and d > min(dates_visites):
+        L.erreurs["date_intervention"] = (
+            f"Une visite est déjà enregistrée le {min(dates_visites):%d/%m/%Y} : "
+            "l'intervention ne peut pas être postérieure à une visite.")
     type_c = L.choix("type_chirurgie", R.TYPES_CHIRURGIE)
     voie = L.choix("voie_abord", R.VOIES_ABORD)
     duree = L.entier("duree_minutes", 1, 600)
@@ -201,6 +211,17 @@ def lire_visite(visite, form, echeance, patient):
         for k, v in valeurs.items():
             setattr(visite, k, v)
     return L.erreurs
+
+
+# chirurgien_id n'est pas gardé : la visite devient une déclaration de l'administratrice.
+CHAMPS_GARDES_VISITE = {"id", "patient_id", "echeance", "statut", "cree_le"}
+
+
+def vider_visite(visite):
+    """Efface les données cliniques et l'auteur (visite réalisée repassée en « non réalisée » par l'admin)."""
+    for col in visite.__table__.columns:
+        if col.name not in CHAMPS_GARDES_VISITE:
+            setattr(visite, col.name, False if col.name in CASES_A_COCHER else None)
 
 
 # ------------------------------------------------- pré-remplissage des formulaires

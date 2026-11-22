@@ -1,6 +1,16 @@
-"""Export des données au format CSV (une ligne par patient) et dictionnaire des variables."""
+"""Export des données (une ligne par patient) et dictionnaire des variables.
+
+Deux formats : un classeur Excel (.xlsx, valeurs typées, dictionnaire en deuxième feuille) et un CSV
+pour R, SPSS ou Stata. Les colonnes sont définies une seule fois, dans colonnes().
+"""
 import csv
 import io
+from datetime import date
+
+from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 
 from . import referentiels as R
 from .planning import date_prevue, ecart_jours
@@ -46,10 +56,10 @@ def colonnes(coef):
     ]
 
     for code, libelle, _ in R.ECHEANCES:
-        def v(attr, code=code, transf=None):
+        def v(attr, code=code, transf=None, clinique=True):
             def f(p):
                 vis = p.visite(code)
-                if vis is None:
+                if vis is None or (clinique and vis.statut != "realisee"):
                     return ""
                 val = attr(vis) if callable(attr) else getattr(vis, attr)
                 return transf(val) if transf else val
@@ -57,7 +67,7 @@ def colonnes(coef):
 
         x = code
         cols += [
-            (f"{x}_statut", f"{libelle} : statut (realisee, non_realisee, vide = non saisie)", v("statut")),
+            (f"{x}_statut", f"{libelle} : statut (realisee, non_realisee, vide = non saisie)", v("statut", clinique=False)),
             (f"{x}_date_prevue", f"{libelle} : date prévue",
              lambda p, code=code: date_prevue(p.intervention, code) if p.intervention else ""),
             (f"{x}_date", f"{libelle} : date réelle de la visite", v("date_visite")),
@@ -108,35 +118,95 @@ def colonnes(coef):
         if code in R.ECHEANCES_ATROPHIE:
             cols.append((f"{x}_atrophie", f"{libelle} : atrophie testiculaire (1 oui, 0 non)", v("atrophie", transf=_b)))
         cols.append((f"{x}_chirurgien", f"{libelle} : chirurgien ayant saisi la visite",
-                     v(lambda vis: vis.chirurgien.nom if vis.chirurgien else "")))
+                     v(lambda vis: vis.chirurgien.nom if vis.chirurgien else "", clinique=False)))
     return cols
 
 
-def _format(val, style):
+def _format_csv(val):
+    """Valeur pour le CSV R/SPSS : dates ISO, point décimal, texte brut."""
     if val is None:
         return ""
     if hasattr(val, "isoformat"):
-        return val.strftime("%d/%m/%Y") if style == "excel" else val.isoformat()
+        return val.isoformat()
     if isinstance(val, float):
-        txt = f"{val:g}"
-        return txt.replace(".", ",") if style == "excel" else txt
+        return f"{val:g}"
     return val
 
 
-def csv_donnees(patients, coef, style):
+def csv_donnees(patients, coef):
+    """CSV pour R, SPSS ou Stata : séparateur virgule, point décimal, UTF-8 sans BOM."""
     cols = colonnes(coef)
     buf = io.StringIO()
-    w = csv.writer(buf, delimiter=";" if style == "excel" else ",")
+    w = csv.writer(buf)
     w.writerow([c[0] for c in cols])
     for p in patients:
-        w.writerow([_format(f(p), style) for _, _, f in cols])
-    return ("﻿" if style == "excel" else "") + buf.getvalue()
+        w.writerow([_format_csv(f(p)) for _, _, f in cols])
+    return buf.getvalue()
 
 
 def csv_dictionnaire(coef):
     buf = io.StringIO()
-    w = csv.writer(buf, delimiter=";")
+    w = csv.writer(buf)
     w.writerow(["variable", "description"])
     for nom, desc, _ in colonnes(coef):
         w.writerow([nom, desc])
-    return "﻿" + buf.getvalue()
+    return buf.getvalue()
+
+
+# ------------------------------------------------------------------ Excel (.xlsx)
+
+TYPE_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _ecrire(ws, ligne, col, val):
+    """Écrit une valeur avec son vrai type : nombre, date ou texte."""
+    if val is None or val == "":
+        return
+    if isinstance(val, bool):
+        val = int(val)
+    if isinstance(val, str):
+        # Caractères de contrôle (copier-coller) : interdits dans un fichier xlsx.
+        cellule = ws.cell(ligne, col, ILLEGAL_CHARACTERS_RE.sub("", val))
+        # Toujours du texte, jamais une formule : openpyxl ferait de « =... » une formule,
+        # et Excel interpréterait « - léger hématome » ou « - 2+3 ».
+        cellule.data_type = "s"
+    elif isinstance(val, date):
+        cellule = ws.cell(ligne, col, val)
+        cellule.number_format = "DD/MM/YYYY"
+    else:
+        ws.cell(ligne, col, val)
+
+
+def _entete(ws, noms, largeurs):
+    gras = Font(bold=True)
+    for j, (nom, largeur) in enumerate(zip(noms, largeurs), start=1):
+        _ecrire(ws, 1, j, nom)
+        ws.cell(1, j).font = gras
+        ws.column_dimensions[get_column_letter(j)].width = largeur
+
+
+def xlsx_donnees(patients, coef):
+    """Classeur Excel : feuille « Données » (une ligne par patient) et feuille « Dictionnaire »."""
+    cols = colonnes(coef)
+    wb = Workbook()
+    wb.properties.creator = "Beyassa"
+
+    ws = wb.active
+    ws.title = "Données"
+    _entete(ws, [c[0] for c in cols], [min(max(len(c[0]) + 2, 11), 32) for c in cols])
+    for i, p in enumerate(patients, start=2):
+        for j, (_, _, f) in enumerate(cols, start=1):
+            _ecrire(ws, i, j, f(p))
+    ws.freeze_panes = "B2"  # en-tête et numéro du patient toujours visibles
+    ws.auto_filter.ref = ws.dimensions
+
+    dico = wb.create_sheet("Dictionnaire")
+    _entete(dico, ["variable", "description"], [32, 100])
+    for i, (nom, desc, _) in enumerate(cols, start=2):
+        _ecrire(dico, i, 1, nom)
+        _ecrire(dico, i, 2, desc)
+    dico.freeze_panes = "A2"
+
+    sortie = io.BytesIO()
+    wb.save(sortie)
+    return sortie.getvalue()

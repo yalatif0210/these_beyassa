@@ -1,6 +1,6 @@
 """Espace administrateur : tableau de bord, données complètes, corrections, paramètres, export."""
-import hmac
 import io
+import time
 from datetime import date, timedelta
 from functools import wraps
 
@@ -12,19 +12,30 @@ from markupsafe import Markup
 from sqlalchemy.exc import IntegrityError
 
 from . import limiter
-from .export import colonnes, csv_dictionnaire, csv_donnees
+from .export import TYPE_XLSX, colonnes, csv_dictionnaire, csv_donnees, xlsx_donnees
 from .models import (Admin, Brouillon, Chirurgien, Envoi, Intervention, Parametres, Patient, Visite, db, empreinte,
-                     nouveau_jeton)
+                     jetons_egaux, nouveau_jeton)
 from .planning import ecart_jours, etats_patient, hors_fenetre
 from .referentiels import CODES_ECHEANCES, COEFFICIENTS_VOLUME, LIBELLES_ECHEANCE
-from .saisie import Lecteur, lire_intervention, lire_patient, lire_visite, valeurs_formulaire
+from .saisie import Lecteur, lire_intervention, lire_patient, lire_visite, valeurs_formulaire, vider_visite
 
 bp = Blueprint("admin", __name__)
 
 
+DUREE_SESSION_ADMIN = timedelta(hours=12)
+
+
 def admin_courant():
     aid = session.get("admin_id")
-    return db.session.get(Admin, aid) if aid else None
+    if not aid:
+        return None
+    # La session des chirurgiens dure un an ; celle de l'administratrice (accès à tout) expire après 12 h.
+    depuis = session.get("admin_depuis", 0)
+    if time.time() - depuis > DUREE_SESSION_ADMIN.total_seconds():
+        session.pop("admin_id", None)
+        session.pop("admin_depuis", None)
+        return None
+    return db.session.get(Admin, aid)
 
 
 def connexion_requise(vue):
@@ -52,6 +63,7 @@ def connexion():
             session.clear()
             session.permanent = True
             session["admin_id"] = a.id
+            session["admin_depuis"] = time.time()
             suite = request.args.get("suite") or ""
             if not suite.startswith("/admin"):
                 suite = url_for("admin.tableau_de_bord")
@@ -222,6 +234,9 @@ def visite(numero, echeance):
             if v is None:
                 v = Visite(patient=pt, echeance=echeance)
                 db.session.add(v)
+            elif v.statut == "realisee":
+                vider_visite(v)
+            # Déjà non réalisée (renvoi, ou déclarée par un chirurgien) : rien ne change, l'auteur est gardé.
             v.statut = "non_realisee"
             try:
                 db.session.commit()
@@ -232,8 +247,12 @@ def visite(numero, echeance):
             flash(f"Visite {echeance} marquée comme non réalisée.", "succes")
             return redirect(url_for("admin.patient", numero=numero))
         cible = v or Visite(echeance=echeance)
+        etait_absente = v is not None and v.statut == "non_realisee"
         erreurs = lire_visite(cible, request.form, echeance, pt)
         if not erreurs:
+            if etait_absente:
+                # Données saisies par l'administratrice : pas attribuées au chirurgien qui avait déclaré l'absence.
+                cible.chirurgien_id = None
             if v is None:
                 cible.patient = pt
                 db.session.add(cible)
@@ -402,7 +421,7 @@ def _date_libre(L, nom):
 def nouveau_qr():
     p = Parametres.courants()
     vu = request.form.get("jeton_actuel") or ""
-    if vu and not hmac.compare_digest(vu, p.jeton_acces):
+    if vu and not jetons_egaux(vu, p.jeton_acces):
         flash("Un nouveau QR code a déjà été généré : c'est celui affiché ci-dessous.", "info")
         return redirect(url_for("admin.parametres"))
     p.jeton_acces = nouveau_jeton()
@@ -427,13 +446,21 @@ def export():
     return render_template("admin/export.html", nb=Patient.query.count(), nb_colonnes=len(colonnes(p.coefficient_volume)))
 
 
+@bp.route("/export/donnees.xlsx")
+@connexion_requise
+def export_excel():
+    p = Parametres.courants()
+    contenu = xlsx_donnees(Patient.query.order_by(Patient.numero).all(), p.coefficient_volume)
+    nom = f"beyassa_donnees_{date.today():%Y%m%d}.xlsx"
+    return Response(contenu, mimetype=TYPE_XLSX, headers={"Content-Disposition": f"attachment; filename={nom}"})
+
+
 @bp.route("/export/donnees.csv")
 @connexion_requise
 def export_donnees():
     p = Parametres.courants()
-    style = "standard" if request.args.get("style") == "standard" else "excel"
-    contenu = csv_donnees(Patient.query.order_by(Patient.numero).all(), p.coefficient_volume, style)
-    nom = f"beyassa_donnees_{style}_{date.today():%Y%m%d}.csv"
+    contenu = csv_donnees(Patient.query.order_by(Patient.numero).all(), p.coefficient_volume)
+    nom = f"beyassa_donnees_r_spss_{date.today():%Y%m%d}.csv"
     return Response(contenu, mimetype="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename={nom}"})
 
