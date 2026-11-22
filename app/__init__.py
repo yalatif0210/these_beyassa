@@ -100,7 +100,10 @@ def create_app(config=None):
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Referrer-Policy"] = "no-referrer"
+        # same-origin, pas no-referrer : en HTTPS, la protection CSRF exige que le navigateur indique la page
+        # d'origine (Referer) pour chaque formulaire envoyé. same-origin ne la transmet qu'à ce site, jamais
+        # à un autre : le jeton du QR code ne peut pas fuir à l'extérieur.
+        resp.headers["Referrer-Policy"] = "same-origin"
         resp.headers.setdefault("Cache-Control", "no-store")
         return resp
 

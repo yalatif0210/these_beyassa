@@ -61,7 +61,7 @@ def test_nouveau_qr_invalide_l_ancien(app, chir, adm):
 def test_entetes_de_securite(chir):
     r = chir.get("/")
     assert r.headers["X-Robots-Tag"].startswith("noindex")
-    assert r.headers["Referrer-Policy"] == "no-referrer"
+    assert r.headers["Referrer-Policy"] == "same-origin"  # pas no-referrer : casse le CSRF en HTTPS
 
 
 # ---------------------------------------------------------------- parcours
@@ -727,3 +727,24 @@ def test_refuse_de_demarrer_avec_une_valeur_d_exemple(monkeypatch):
     monkeypatch.setenv("ADMIN_MOT_DE_PASSE", "a_remplacer")
     with pytest.raises(RuntimeError, match="ADMIN_MOT_DE_PASSE"):
         create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite://"})
+
+
+def test_formulaires_acceptes_en_https_avec_csrf():
+    """En HTTPS, Flask-WTF exige un Referer du même site : la politique doit laisser le navigateur l'envoyer."""
+    import re
+
+    from app import create_app
+    app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite://", "WTF_CSRF_ENABLED": True,
+                      "RATELIMIT_ENABLED": False, "SECRET_KEY": "test"})
+    c = app.test_client()
+    base = "https://etude.beyassa.org"
+    r = c.get("/admin/connexion", base_url=base)
+    assert r.headers["Referrer-Policy"] == "same-origin"  # le navigateur enverra le Referer à ce site
+    jeton = re.search(r'name="csrf_token" value="([^"]+)"', r.get_data(as_text=True)).group(1)
+    donnees = {"csrf_token": jeton, "identifiant": "x", "mot_de_passe": "y"}
+    # Ce que fait un navigateur avec same-origin : Referer de la page du formulaire.
+    r = c.post("/admin/connexion", base_url=base, data=donnees, headers={"Referer": base + "/admin/connexion"})
+    assert "Identifiant ou mot de passe incorrect" in r.get_data(as_text=True)
+    # Sans Referer (ce que faisait no-referrer) : refusé.
+    r = c.post("/admin/connexion", base_url=base, data=donnees)
+    assert r.status_code == 400 and "Formulaire expiré" in r.get_data(as_text=True)

@@ -90,7 +90,7 @@ app/templates/aide/   guide d'utilisation de chaque écran, nommé <blueprint>_<
 ## Sécurité (sans mot de passe côté chirurgien)
 
 - Le QR code encode `/acces/<jeton>`, un jeton aléatoire `secrets.token_urlsafe(24)` stocké dans `Parametres.jeton_acces`. Il est comparé avec `hmac.compare_digest`.
-- Le jeton est placé dans une session permanente (365 jours), puis la page redirige pour qu'il disparaisse de la barre d'adresse. Avec `Referrer-Policy: no-referrer`, il ne fuit pas vers d'autres sites.
+- Le jeton est placé dans une session permanente (365 jours), puis la page redirige pour qu'il disparaisse de la barre d'adresse. Avec `Referrer-Policy: same-origin`, il ne fuit pas vers d'autres sites. **Pas `no-referrer`** : en HTTPS, Flask-WTF exige un `Referer` du même site sur chaque formulaire (`WTF_CSRF_SSL_STRICT`), et `no-referrer` faisait échouer tous les envois (« Formulaire expiré »), constaté en production le 22/11/2026.
 - Si l'administratrice régénère le jeton, toutes les sessions des chirurgiens sont invalidées.
 - Le nom du chirurgien est choisi une seule fois et gardé en session. Il est enregistré sur chaque saisie (`chirurgien_id`), et aucun écran ne permet de changer l'auteur d'une saisie.
 - **Nom verrouillé** : dès la première saisie enregistrée depuis un téléphone (`session["nom_verrouille"]`), ce téléphone ne peut plus changer de nom. L'administratrice peut « libérer les téléphones » d'un chirurgien (`Chirurgien.generation_session` incrémenté : les sessions qui portent une ancienne valeur doivent rechoisir le nom). Effacer les données du navigateur et rescanner le QR code contourne le verrou : c'est une protection contre l'erreur, pas contre la malveillance.
