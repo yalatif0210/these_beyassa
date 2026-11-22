@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Chirurgiens</h1>
+<section class="carte">
+  <form method="post" class="en-ligne-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input name="nom" placeholder="Nom affiché (ex. Dr Ndiaye)" aria-label="Nom du chirurgien" required>
+    <button class="bouton principal">Ajouter</button>
+  </form>
+  <p class="aide">Ces noms apparaissent sur le téléphone des chirurgiens au premier scan du QR code.</p>
+</section>
+<section class="carte">
+  {% if chirurgiens %}
+  <table class="tableau">
+    <thead><tr><th>Nom</th><th>État</th><th></th></tr></thead>
+    <tbody>
+    {% for c in chirurgiens %}
+      <tr class="{{ '' if c.actif else 'inactif' }}">
+        <td>{{ c.nom }}</td>
+        <td>{{ "Actif" if c.actif else "Désactivé" }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin.basculer_chirurgien', cid=c.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="lien">{{ "Désactiver" if c.actif else "Réactiver" }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="vide">Aucun chirurgien. Ajoutez les noms avant de diffuser le QR code.</p>{% endif %}
+</section>
+{% endblock %}

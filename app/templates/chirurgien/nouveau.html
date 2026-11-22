@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block contenu %}
+<p class="fil"><a href="{{ url_for('chirurgien.accueil') }}">&larr; Accueil</a></p>
+<h1>Nouveau patient</h1>
+
+{% if erreurs %}<div class="flash flash-erreur" role="alert">Certains champs sont à corriger (en rouge).</div>{% endif %}
+
+<form method="post" class="formulaire" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {% if doublons %}
+  <section class="alerte">
+    <h2>Ce patient existe peut-être déjà</h2>
+    <p>Des patients avec les mêmes initiales et un âge proche sont enregistrés :</p>
+    <ul>
+      {% for d in doublons %}
+        <li><a href="{{ url_for('chirurgien.patient', numero=d.numero) }}">{{ d.numero }}</a> : {{ d.initiales }}, {{ d.age_ans }} ans,
+          inclus le {{ d.date_consultation|date_fr }}</li>
+      {% endfor %}
+    </ul>
+    <p>Si c'est l'un d'eux, ouvrez sa fiche. Sinon, confirmez ci-dessous.</p>
+    <input type="hidden" name="confirmer_nouveau" value="1">
+    <button type="submit" class="bouton principal">C'est un nouveau patient : enregistrer</button>
+  </section>
+  {% endif %}
+
+  {% with patient=None %}{% include "forms/_inclusion.html" %}{% endwith %}
+
+  {% if not doublons %}
+  <div class="actions">
+    <button type="submit" class="bouton principal">Enregistrer le patient</button>
+    <a class="bouton secondaire" href="{{ url_for('chirurgien.accueil') }}">Annuler</a>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}

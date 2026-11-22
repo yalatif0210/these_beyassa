@@ -1,0 +1,84 @@
+{% import "_macros.html" as m with context %}
+<section class="bloc">
+  <h2>Consultation</h2>
+  {{ m.texte("date_visite", valeurs, erreurs, "Date de la visite", requis=True, type="date") }}
+  {{ m.douleur("douleur_score", "douleur_evaluateur", valeurs, erreurs, "Douleur") }}
+  {{ m.zone("complications", valeurs, erreurs, "Complications", aide="Laisser vide s'il n'y en a pas") }}
+</section>
+
+<section class="bloc">
+  <h2>Cicatrice</h2>
+  <div class="champ">
+    <span class="etiquette">Signes présents</span>
+    <div class="cases">
+      {{ m.case("cicatrice_cheloide", valeurs, "Chéloïde") }}
+      {{ m.case("cicatrice_suintement", valeurs, "Suintement") }}
+      {{ m.case("cicatrice_saignement", valeurs, "Sang") }}
+      {{ m.case("cicatrice_oedeme", valeurs, "Œdème périlésionnel") }}
+      {{ m.case("cicatrice_erytheme", valeurs, "Érythème périlésionnel") }}
+    </div>
+    <p class="aide">Ne rien cocher si aucun signe.</p>
+  </div>
+  {{ m.zone("cicatrice_aspect", valeurs, erreurs, "Aspect de la cicatrice") }}
+</section>
+
+{% if echeance in R.ECHEANCES_ECHOGRAPHIE %}
+{% set cote = patient.cote %}
+<section class="bloc">
+  <h2>Échographie scrotale</h2>
+  {{ m.texte("echo_date", valeurs, erreurs, "Date de l'échographie", type="date") }}
+  {{ m.radios("echo_epanchement", R.OUI_NON, valeurs, erreurs, "Épanchement liquidien ?") }}
+  <div class="si-epanchement">
+    {{ m.radios("echo_epanchement_cote", R.COTES_EPANCHEMENT, valeurs, erreurs, "Côté de l'épanchement") }}
+    {{ m.dimensions("echo_epanchement", valeurs, erreurs, "Dimensions de l'épanchement") }}
+  </div>
+  {% for c, nom in [("d", "droit"), ("g", "gauche")] %}
+    {% set opere = (cote == "bilateral") or (cote == "droit" and c == "d") or (cote == "gauche" and c == "g") %}
+    <div class="sous-bloc">
+      <h3>Testicule {{ nom }} {% if opere %}<span class="badge">côté opéré</span>{% else %}<span class="badge neutre">côté opposé</span>{% endif %}</h3>
+      {{ m.dimensions("echo_testicule_" ~ c, valeurs, erreurs, "Dimensions") }}
+      {% if opere %}
+        {{ m.radios("echo_doppler_" ~ c, R.DOPPLER, valeurs, erreurs, "Vascularisation au Doppler", requis=False) }}
+        {{ m.radios("echo_structure_" ~ c, R.ECHOSTRUCTURE, valeurs, erreurs, "Échostructure", requis=False) }}
+      {% endif %}
+    </div>
+  {% endfor %}
+  {{ m.radios("echo_recidive", R.OUI_NON, valeurs, erreurs, "Récidive ?") }}
+  {{ m.zone("echo_conclusion", valeurs, erreurs, "Conclusion de l'échographie") }}
+</section>
+{% endif %}
+
+{% if echeance in R.ECHEANCES_ATROPHIE %}
+<section class="bloc">
+  <h2>Atrophie testiculaire</h2>
+  {{ m.radios("atrophie", R.OUI_NON, valeurs, erreurs, "Atrophie testiculaire ?") }}
+</section>
+{% endif %}
+
+{% if echeance in R.ECHEANCES_SATISFACTION %}
+<section class="bloc">
+  <h2>Avis des parents</h2>
+  {{ m.radios("satisfaction_score", R.SATISFACTION, valeurs, erreurs, "Satisfaction des parents", classe="vertical") }}
+  <div class="champ">
+    <span class="etiquette">Signes remarqués à la maison</span>
+    <div class="cases">
+      {{ m.case("symptome_douleur_persistante", valeurs, "Douleur persistante") }}
+      {{ m.case("symptome_reapparition_oedeme", valeurs, "Réapparition de l'œdème") }}
+    </div>
+  </div>
+  {{ m.zone("satisfaction_commentaire", valeurs, erreurs, "Commentaire des parents") }}
+</section>
+{% endif %}
+
+<script>
+  (function () {
+    var bloc = document.querySelector('.si-epanchement');
+    if (!bloc) return;
+    function maj() {
+      var oui = document.querySelector('input[name="echo_epanchement"][value="oui"]');
+      bloc.hidden = !(oui && oui.checked);
+    }
+    document.querySelectorAll('input[name="echo_epanchement"]').forEach(function (r) { r.addEventListener('change', maj); });
+    maj();
+  })();
+</script>

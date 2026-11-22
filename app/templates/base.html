@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0f5c5c">
+  <title>{% block titre_page %}{{ titre or nom_etude }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{% block classe_body %}{% if request.blueprint == 'admin' %}admin{% else %}chir{% endif %}{% endblock %}">
+<header class="entete">
+  <div class="entete-int">
+    {% if request.blueprint == 'admin' and admin_connecte %}
+      <a class="marque" href="{{ url_for('admin.tableau_de_bord') }}">Beyassa <small>administration</small></a>
+      <nav class="nav-admin">
+        <a href="{{ url_for('admin.tableau_de_bord') }}">Tableau de bord</a>
+        <a href="{{ url_for('admin.patients') }}">Patients</a>
+        <a href="{{ url_for('admin.chirurgiens') }}">Chirurgiens</a>
+        <a href="{{ url_for('admin.parametres') }}">Paramètres et QR code</a>
+        <a href="{{ url_for('admin.export') }}">Export</a>
+        <form method="post" action="{{ url_for('admin.deconnexion') }}" class="en-ligne">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="lien">Déconnexion</button>
+        </form>
+      </nav>
+    {% elif request.blueprint == 'admin' %}
+      <span class="marque">Beyassa <small>administration</small></span>
+    {% else %}
+      <a class="marque" href="{{ url_for('chirurgien.accueil') }}">{{ nom_etude }}</a>
+      {% if chirurgien_connecte %}
+        <a class="qui" href="{{ url_for('chirurgien.changer_nom') }}" title="Changer de nom">{{ chirurgien_connecte.nom }}</a>
+      {% endif %}
+    {% endif %}
+  </div>
+</header>
+<main class="contenu">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="flash flash-{{ cat }}" role="status">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  {% block contenu %}{% endblock %}
+</main>
+</body>
+</html>

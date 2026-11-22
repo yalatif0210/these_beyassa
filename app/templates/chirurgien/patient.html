@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block contenu %}
+<p class="fil"><a href="{{ url_for('chirurgien.accueil') }}">&larr; Accueil</a></p>
+<h1>{{ patient.numero }}</h1>
+<p class="sous-titre">{{ patient.initiales }}, {{ patient.age_ans }} ans, hydrocèle {{ libelle(R.COTES, patient.cote)|lower }}</p>
+
+<ol class="etapes">
+  <li class="etape {% if patient.intervention %}fait{% endif %}">
+    <div>
+      <strong>Intervention</strong>
+      {% if patient.intervention %}<span class="aide">Saisie, opéré le {{ patient.intervention.date_intervention|date_fr }}</span>{% endif %}
+    </div>
+    {% if patient.intervention %}
+      <span class="puce s-realisee">Saisie</span>
+    {% else %}
+      <a class="bouton principal petit" href="{{ url_for('chirurgien.intervention', numero=patient.numero) }}">Saisir</a>
+    {% endif %}
+  </li>
+  {% for e in etats %}
+  <li class="etape {% if e.statut in ('realisee', 'non_realisee') %}fait{% endif %}">
+    <div>
+      <strong>Visite {{ e.libelle }}</strong>
+      {% if e.date_prevue %}
+        <span class="aide">Prévue le {{ e.date_prevue|date_fr }} (du {{ e.debut_fenetre|date_fr }} au {{ e.fin_fenetre|date_fr }})</span>
+      {% endif %}
+    </div>
+    {% if e.saisie_possible %}
+      <span class="col-droite">
+        <span class="puce s-{{ e.statut }}">{{ e.libelle_statut }}</span>
+        <a class="bouton principal petit" href="{{ url_for('chirurgien.visite', numero=patient.numero, echeance=e.echeance) }}">Saisir</a>
+      </span>
+    {% else %}
+      <span class="puce s-{{ e.statut }}">{{ e.libelle_statut }}</span>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+<p class="aide">Une information saisie ne peut plus être modifiée ici. Pour une correction, contactez l'administratrice.</p>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block contenu %}
+<h1>Paramètres et QR code</h1>
+<div class="grille">
+<section class="carte">
+  <h2>QR code des chirurgiens</h2>
+  <div class="qr">{{ qr }}</div>
+  <p class="aide">Lien encodé : <code class="coupe">{{ lien }}</code></p>
+  <div class="actions">
+    <a class="bouton principal" href="{{ url_for('admin.affiche') }}" target="_blank">Imprimer l'affiche</a>
+  </div>
+  <form method="post" action="{{ url_for('admin.nouveau_qr') }}"
+        onsubmit="return confirm('Générer un nouveau QR code ? L\'ancien cessera immédiatement de fonctionner et les chirurgiens devront scanner le nouveau.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="bouton discret">Générer un nouveau QR code</button>
+  </form>
+  <p class="aide">À utiliser si le QR code a circulé en dehors du service.</p>
+</section>
+
+<section class="carte">
+  <h2>Réglages de l'étude</h2>
+  {% set valeurs = {
+      "marge_jours": p.marge_jours|string, "objectif_patients": p.objectif_patients|string,
+      "coefficient_volume": "%g"|format(p.coefficient_volume),
+      "date_ouverture": p.date_ouverture.isoformat() if p.date_ouverture else "",
+      "date_fermeture": p.date_fermeture.isoformat() if p.date_fermeture else ""} if not request.form else request.form %}
+  <form method="post" class="formulaire" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ m.texte("marge_jours", valeurs, erreurs, "Marge autour de chaque visite (jours, avant et après)", requis=True,
+               type="number", attrs='inputmode="numeric" min="0" max="30"') }}
+    {{ m.texte("objectif_patients", valeurs, erreurs, "Objectif de patients", requis=True, type="number", attrs='inputmode="numeric"') }}
+    {{ m.texte("date_ouverture", valeurs, erreurs, "Date d'ouverture de l'étude", type="date") }}
+    {{ m.texte("date_fermeture", valeurs, erreurs, "Date de fermeture de l'étude", type="date",
+               aide="Le tableau de bord signale les visites prévues après cette date.") }}
+    {{ m.radios("coefficient_volume", R.COEFFICIENTS_VOLUME, valeurs, erreurs, "Coefficient de calcul des volumes",
+                aide="Volume (mL) = longueur × largeur × épaisseur (mm) × coefficient / 1000") }}
+    <div class="actions"><button class="bouton principal">Enregistrer</button></div>
+  </form>
+  <p><a href="{{ url_for('admin.mot_de_passe') }}">Changer mon mot de passe</a></p>
+</section>
+</div>
+{% endblock %}

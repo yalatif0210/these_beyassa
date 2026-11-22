@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% macro liste_visites(titre, etats, vide, classe="") %}
+<section class="carte {{ classe }}">
+  <h2>{{ titre }} <span class="compte">{{ etats|length }}</span></h2>
+  {% if etats %}
+  <table class="tableau">
+    <thead><tr><th>Patient</th><th>Visite</th><th>Date prévue</th><th>Fenêtre</th><th></th></tr></thead>
+    <tbody>
+    {% for e in etats %}
+      <tr>
+        <td><a href="{{ url_for('admin.patient', numero=e.patient.numero) }}">{{ e.patient.numero }}</a> {{ e.patient.initiales }}</td>
+        <td>{{ e.echeance }}</td>
+        <td>{{ e.date_prevue|date_fr }}</td>
+        <td>{{ e.debut_fenetre|date_fr }} au {{ e.fin_fenetre|date_fr }}</td>
+        <td><a href="{{ url_for('admin.visite', numero=e.patient.numero, echeance=e.echeance) }}">Saisir</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="vide">{{ vide }}</p>{% endif %}
+</section>
+{% endmacro %}
+
+{% block contenu %}
+<h1>Tableau de bord</h1>
+<div class="chiffres">
+  <div class="chiffre"><span class="valeur">{{ stats.patients }}<small> / {{ stats.objectif }}</small></span><span class="lib">patients inclus</span>
+    <span class="jauge"><span style="width: {{ [100, (stats.patients * 100 / stats.objectif)|round|int]|min }}%"></span></span></div>
+  <div class="chiffre"><span class="valeur">{{ stats.interventions }}</span><span class="lib">interventions saisies</span>
+    <span class="aide">{{ stats.scrotale }} scrotales, {{ stats.inguinale }} inguinales</span></div>
+  <div class="chiffre"><span class="valeur">{{ stats.realisees }}<small> / {{ stats.attendues }}</small></span><span class="lib">visites réalisées sur visites dues</span>
+    <span class="aide">{{ stats.non_realisees }} non réalisée(s)</span></div>
+  <div class="chiffre"><span class="valeur">{{ en_retard|length }}</span><span class="lib">visites en retard</span></div>
+</div>
+
+{{ liste_visites("Visites à faire maintenant", a_faire, "Aucune visite dans sa fenêtre aujourd'hui.") }}
+{{ liste_visites("Visites en retard (fenêtre dépassée, rien de saisi)", en_retard, "Aucune visite en retard.", "attention") }}
+{{ liste_visites("Visites des 14 prochains jours", a_venir, "Aucune visite prévue dans les 14 prochains jours.") }}
+{% if parametres.date_fermeture %}
+  {{ liste_visites("Visites prévues après la fermeture (" ~ (parametres.date_fermeture|date_fr) ~ ")", apres_fermeture,
+                   "Aucune visite prévue après la date de fermeture.", "attention") }}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block contenu %}
+<section class="carte etroite">
+  <h1>Connexion</h1>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="champ"><label for="identifiant">Identifiant</label>
+      <input id="identifiant" name="identifiant" autocomplete="username" required></div>
+    <div class="champ"><label for="mot_de_passe">Mot de passe</label>
+      <input id="mot_de_passe" name="mot_de_passe" type="password" autocomplete="current-password" required></div>
+    <button class="bouton principal large">Se connecter</button>
+  </form>
+</section>
+{% endblock %}

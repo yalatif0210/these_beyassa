@@ -1,0 +1,16 @@
+{% import "_macros.html" as m with context %}
+<section class="bloc">
+  <h2>Intervention</h2>
+  {{ m.texte("date_intervention", valeurs, erreurs, "Date de l'intervention", requis=True, type="date") }}
+  {{ m.radios("type_chirurgie", R.TYPES_CHIRURGIE, valeurs, erreurs, "Chirurgie") }}
+  {{ m.radios("voie_abord", R.VOIES_ABORD, valeurs, erreurs, "Voie d'abord") }}
+  {{ m.texte("duree_minutes", valeurs, erreurs, "Durée de l'intervention (minutes)", requis=True, type="number",
+             aide="De la fin de l'installation au pansement", attrs='inputmode="numeric" min="1"') }}
+  {{ m.zone("complications_perop", valeurs, erreurs, "Complications pendant l'intervention", aide="Laisser vide s'il n'y en a pas") }}
+</section>
+<section class="bloc">
+  <h2>État post-opératoire immédiat</h2>
+  {{ m.douleur("douleur_postop", "douleur_postop_evaluateur", valeurs, erreurs, "Douleur") }}
+  {{ m.texte("duree_hospitalisation_jours", valeurs, erreurs, "Durée d'hospitalisation (jours)", requis=True, type="number",
+             aide="0 si l'enfant sort le jour même", attrs='inputmode="numeric" min="0"') }}
+</section>

@@ -1,0 +1,17 @@
+{% import "_macros.html" as m with context %}
+<section class="bloc">
+  <h2>Identification</h2>
+  {{ m.texte("initiales", valeurs, erreurs, "Initiales de l'enfant", requis=True, aide="Pas de nom complet. Exemple : AD",
+             attrs='autocapitalize="characters" autocomplete="off" maxlength="10"') }}
+  {{ m.texte("age_ans", valeurs, erreurs, "Âge (ans)", requis=True, type="number", aide="Étude : enfants de 1 à 10 ans",
+             attrs='inputmode="numeric" min="0" max="17"') }}
+  {{ m.radios("sexe", R.SEXES, valeurs, erreurs, "Sexe") }}
+  {{ m.radios("niveau_scolaire", R.NIVEAUX_SCOLAIRES, valeurs, erreurs, "Niveau scolaire") }}
+  {{ m.radios("consentement_parental", R.OUI_NON, valeurs, erreurs, "Consentement des parents donné ?") }}
+</section>
+<section class="bloc">
+  <h2>Consultation</h2>
+  {{ m.texte("date_consultation", valeurs, erreurs, "Date de la consultation", requis=True, type="date") }}
+  {{ m.radios("type_hydrocele", R.TYPES_HYDROCELE, valeurs, erreurs, "Type d'hydrocèle") }}
+  {{ m.radios("cote", R.COTES, valeurs, erreurs, "Côté") }}
+</section>

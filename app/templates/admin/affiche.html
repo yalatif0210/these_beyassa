@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Affiche QR code</title>
+  <style>
+    @page { size: A4; margin: 15mm; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; color: #12312f; }
+    h1 { font-size: 26pt; margin: 10mm 0 4mm; }
+    .sous { font-size: 15pt; margin: 0 0 8mm; }
+    .qr svg { width: 120mm; height: 120mm; }
+    ol { text-align: left; display: inline-block; font-size: 14pt; line-height: 1.6; margin-top: 8mm; }
+    .note { margin-top: 10mm; font-size: 11pt; color: #555; }
+    .imprimer { margin: 6mm; padding: 3mm 8mm; font-size: 13pt; }
+    @media print { .imprimer { display: none; } }
+  </style>
+</head>
+<body>
+  <button class="imprimer" onclick="window.print()">Imprimer</button>
+  <h1>{{ nom_etude }}</h1>
+  <p class="sous">Saisie des données par les chirurgiens</p>
+  <div class="qr">{{ qr }}</div>
+  <ol>
+    <li>Ouvrez l'appareil photo de votre téléphone.</li>
+    <li>Visez ce QR code et touchez le lien qui apparaît.</li>
+    <li>Choisissez votre nom (une seule fois).</li>
+  </ol>
+  <p class="note">Réservé à l'équipe de chirurgie pédiatrique. Merci de ne pas photographier ni diffuser ce code.</p>
+</body>
+</html>

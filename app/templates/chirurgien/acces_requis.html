@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block contenu %}
+<section class="carte centre">
+  {% if invalide %}
+    <h1>QR code expiré</h1>
+    <p>Ce QR code n'est plus valable. Scannez le QR code affiché actuellement dans le service.</p>
+  {% else %}
+    <h1>Bienvenue</h1>
+    <p>Pour accéder à la saisie, scannez le QR code affiché dans le service avec l'appareil photo de votre téléphone.</p>
+  {% endif %}
+</section>
+{% endblock %}

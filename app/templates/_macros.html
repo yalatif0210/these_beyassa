@@ -1,0 +1,58 @@
+{% macro erreur(nom, erreurs) -%}
+  {% if erreurs.get(nom) %}<p class="msg-erreur">{{ erreurs[nom] }}</p>{% endif %}
+{%- endmacro %}
+
+{% macro radios(nom, options, valeurs, erreurs, label, requis=True, aide=None, classe="") %}
+<fieldset class="champ {{ classe }} {% if erreurs.get(nom) %}en-erreur{% endif %}" id="champ-{{ nom }}">
+  <legend>{{ label }}{% if requis %} <span class="req" aria-hidden="true">*</span>{% endif %}</legend>
+  <div class="pilules">
+    {% for code, lib in options %}
+      <label class="pilule"><input type="radio" name="{{ nom }}" value="{{ code }}"
+        {% if valeurs.get(nom, '')|string == code|string %}checked{% endif %}><span>{{ lib }}</span></label>
+    {% endfor %}
+  </div>
+  {% if aide %}<p class="aide">{{ aide }}</p>{% endif %}
+  {{ erreur(nom, erreurs) }}
+</fieldset>
+{% endmacro %}
+
+{% macro texte(nom, valeurs, erreurs, label, requis=False, aide=None, type="text", attrs="") %}
+<div class="champ {% if erreurs.get(nom) %}en-erreur{% endif %}" id="champ-{{ nom }}">
+  <label for="{{ nom }}">{{ label }}{% if requis %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+  <input id="{{ nom }}" name="{{ nom }}" type="{{ type }}" value="{{ valeurs.get(nom, '') }}" {{ attrs|safe }}>
+  {% if aide %}<p class="aide">{{ aide }}</p>{% endif %}
+  {{ erreur(nom, erreurs) }}
+</div>
+{% endmacro %}
+
+{% macro zone(nom, valeurs, erreurs, label, aide=None) %}
+<div class="champ {% if erreurs.get(nom) %}en-erreur{% endif %}" id="champ-{{ nom }}">
+  <label for="{{ nom }}">{{ label }}</label>
+  <textarea id="{{ nom }}" name="{{ nom }}" rows="3">{{ valeurs.get(nom, '') }}</textarea>
+  {% if aide %}<p class="aide">{{ aide }}</p>{% endif %}
+  {{ erreur(nom, erreurs) }}
+</div>
+{% endmacro %}
+
+{% macro case(nom, valeurs, label) %}
+<label class="case"><input type="checkbox" name="{{ nom }}" {% if valeurs.get(nom) %}checked{% endif %}><span>{{ label }}</span></label>
+{% endmacro %}
+
+{% macro douleur(nom, nom_eval, valeurs, erreurs, label) %}
+{{ radios(nom, R.NOTES_DOULEUR, valeurs, erreurs, label, aide="0 = aucune douleur, 10 = douleur maximale", classe="echelle") }}
+{{ radios(nom_eval, R.EVALUATEURS_DOULEUR, valeurs, erreurs, "Qui a donné le score ?") }}
+{% endmacro %}
+
+{% macro dimensions(prefixe, valeurs, erreurs, label) %}
+<div class="champ dims" id="champ-{{ prefixe }}">
+  <span class="etiquette">{{ label }}</span>
+  <div class="trio">
+    {% for dim, lib in [("longueur", "Longueur"), ("largeur", "Largeur"), ("epaisseur", "Épaisseur")] %}
+      <label>{{ lib }} (mm)
+        <input name="{{ prefixe }}_{{ dim }}" inputmode="decimal" value="{{ valeurs.get(prefixe ~ '_' ~ dim, '') }}">
+      </label>
+    {% endfor %}
+  </div>
+  {% for dim in ["longueur", "largeur", "epaisseur"] %}{{ erreur(prefixe ~ '_' ~ dim, erreurs) }}{% endfor %}
+</div>
+{% endmacro %}

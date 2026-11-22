@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% macro l(label, valeur) %}{% if valeur is not none and valeur != "" %}<div class="ligne"><dt>{{ label }}</dt><dd>{{ valeur }}</dd></div>{% endif %}{% endmacro %}
+{% macro on(v) %}{{ "" if v is none else ("Oui" if v else "Non") }}{% endmacro %}
+{% macro vol(v) %}{{ (v|nombre ~ " mL") if v else "" }}{% endmacro %}
+
+{% block contenu %}
+<p class="fil"><a href="{{ url_for('admin.patients') }}">&larr; Patients</a></p>
+<h1>{{ patient.numero }} <small>{{ patient.initiales }}</small></h1>
+
+<div class="grille">
+<section class="carte">
+  <div class="titre-carte"><h2>Inclusion</h2><a href="{{ url_for('admin.modifier_patient', numero=patient.numero) }}">Modifier</a></div>
+  <dl>
+    {{ l("Âge", patient.age_ans ~ " ans") }}
+    {{ l("Sexe", libelle(R.SEXES, patient.sexe)) }}
+    {{ l("Niveau scolaire", patient.niveau_scolaire) }}
+    {{ l("Consentement parental", on(patient.consentement_parental)) }}
+    {{ l("Date de consultation", patient.date_consultation|date_fr) }}
+    {{ l("Type d'hydrocèle", libelle(R.TYPES_HYDROCELE, patient.type_hydrocele)) }}
+    {{ l("Côté", libelle(R.COTES, patient.cote)) }}
+    {{ l("Saisi par", patient.chirurgien.nom if patient.chirurgien else "") }}
+  </dl>
+</section>
+
+<section class="carte">
+  {% set i = patient.intervention %}
+  <div class="titre-carte"><h2>Intervention</h2>
+    <a href="{{ url_for('admin.intervention', numero=patient.numero) }}">{{ "Modifier" if i else "Saisir" }}</a></div>
+  {% if i %}
+  <dl>
+    {{ l("Date", i.date_intervention|date_fr) }}
+    {{ l("Chirurgie", libelle(R.TYPES_CHIRURGIE, i.type_chirurgie)) }}
+    {{ l("Voie d'abord", libelle(R.VOIES_ABORD, i.voie_abord)) }}
+    {{ l("Durée", i.duree_minutes ~ " min") }}
+    {{ l("Complications", i.complications_perop or "Aucune") }}
+    {{ l("Douleur post-opératoire", i.douleur_postop ~ "/10 (" ~ libelle(R.EVALUATEURS_DOULEUR, i.douleur_postop_evaluateur) ~ ")") }}
+    {{ l("Hospitalisation", i.duree_hospitalisation_jours ~ " jour(s)") }}
+    {{ l("Saisi par", i.chirurgien.nom if i.chirurgien else "") }}
+  </dl>
+  {% else %}<p class="vide">Pas encore saisie.</p>{% endif %}
+</section>
+</div>
+
+<h2 class="titre-section">Suivi</h2>
+<div class="grille">
+{% for e in etats %}
+  {% set v = patient.visite(e.echeance) %}
+  <section class="carte">
+    <div class="titre-carte">
+      <h2>{{ e.libelle }} <span class="puce s-{{ e.statut }}">{{ e.libelle_statut }}</span></h2>
+      {% if patient.intervention %}
+        <a href="{{ url_for('admin.visite', numero=patient.numero, echeance=e.echeance) }}">{{ "Modifier" if v and v.statut == "realisee" else "Saisir" }}</a>
+      {% endif %}
+    </div>
+    {% if e.date_prevue %}<p class="aide">Prévue le {{ e.date_prevue|date_fr }} (du {{ e.debut_fenetre|date_fr }} au {{ e.fin_fenetre|date_fr }})</p>{% endif %}
+    {% if v and v.statut == "realisee" %}
+    {% set ecart = ecart_jours(v) %}
+    <dl>
+      {{ l("Date", (v.date_visite|date_fr) ~ ((" (écart " ~ ("%+d"|format(ecart)) ~ " j)") if ecart is not none else "")) }}
+      {{ l("Douleur", v.douleur_score ~ "/10 (" ~ libelle(R.EVALUATEURS_DOULEUR, v.douleur_evaluateur) ~ ")") }}
+      {{ l("Complications", v.complications or "Aucune") }}
+      {% set signes = [] %}
+      {% for nom, lib in [("cheloide","chéloïde"),("suintement","suintement"),("saignement","sang"),("oedeme","œdème"),("erytheme","érythème")] %}
+        {% if v["cicatrice_" ~ nom] %}{% set _ = signes.append(lib) %}{% endif %}
+      {% endfor %}
+      {{ l("Cicatrice, signes", signes|join(", ") if signes else "Aucun") }}
+      {{ l("Cicatrice, aspect", v.cicatrice_aspect) }}
+      {% if e.echeance in R.ECHEANCES_ECHOGRAPHIE %}
+        {{ l("Échographie, date", v.echo_date|date_fr) }}
+        {{ l("Épanchement", on(v.echo_epanchement) ~ ((" (" ~ libelle(R.COTES_EPANCHEMENT, v.echo_epanchement_cote) ~ ")") if v.echo_epanchement_cote else "")) }}
+        {{ l("Volume de l'épanchement", vol(v.volume_epanchement(coef))) }}
+        {{ l("Volume testicule droit", vol(v.volume_testicule("d", coef))) }}
+        {{ l("Volume testicule gauche", vol(v.volume_testicule("g", coef))) }}
+        {{ l("Rapport opéré / opposé", v.rapport_volumes(coef)|nombre) }}
+        {{ l("Doppler droit", libelle(R.DOPPLER, v.echo_doppler_d)) }}
+        {{ l("Doppler gauche", libelle(R.DOPPLER, v.echo_doppler_g)) }}
+        {{ l("Échostructure droite", libelle(R.ECHOSTRUCTURE, v.echo_structure_d)) }}
+        {{ l("Échostructure gauche", libelle(R.ECHOSTRUCTURE, v.echo_structure_g)) }}
+        {{ l("Récidive", on(v.echo_recidive)) }}
+        {{ l("Conclusion", v.echo_conclusion) }}
+      {% endif %}
+      {% if e.echeance in R.ECHEANCES_ATROPHIE %}{{ l("Atrophie testiculaire", on(v.atrophie)) }}{% endif %}
+      {% if e.echeance in R.ECHEANCES_SATISFACTION %}
+        {{ l("Satisfaction des parents", libelle(R.SATISFACTION, v.satisfaction_score)) }}
+        {% set sympt = [] %}
+        {% if v.symptome_douleur_persistante %}{% set _ = sympt.append("douleur persistante") %}{% endif %}
+        {% if v.symptome_reapparition_oedeme %}{% set _ = sympt.append("réapparition de l'œdème") %}{% endif %}
+        {{ l("Signes à la maison", sympt|join(", ") if sympt else "Aucun") }}
+        {{ l("Commentaire", v.satisfaction_commentaire) }}
+      {% endif %}
+      {{ l("Saisi par", v.chirurgien.nom if v.chirurgien else "") }}
+    </dl>
+    {% endif %}
+    {% if v %}
+    <form method="post" action="{{ url_for('admin.effacer_visite', numero=patient.numero, echeance=e.echeance) }}"
+          onsubmit="return confirm('Effacer la visite {{ e.echeance }} ? Elle pourra être saisie à nouveau.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="bouton discret petit">Effacer cette visite</button>
+    </form>
+    {% endif %}
+  </section>
+{% endfor %}
+</div>
+
+<section class="carte danger">
+  <h2>Supprimer le patient</h2>
+  <p class="aide">Pour un doublon ou une erreur d'inclusion. Toutes ses données seront effacées définitivement.</p>
+  <form method="post" action="{{ url_for('admin.supprimer_patient', numero=patient.numero) }}" class="en-ligne-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input name="confirmation" placeholder="Tapez {{ patient.numero }}" autocomplete="off" aria-label="Confirmation">
+    <button class="bouton danger">Supprimer</button>
+  </form>
+</section>
+{% endblock %}

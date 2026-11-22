@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block contenu %}
+<a class="bouton principal large" href="{{ url_for('chirurgien.nouveau_patient') }}">+ Nouveau patient</a>
+
+<section class="carte">
+  <h2>Retrouver un patient</h2>
+  <form method="get" action="{{ url_for('chirurgien.recherche') }}" class="recherche" role="search">
+    <input name="q" value="{{ q }}" placeholder="Numéro (ex. 7 ou HYD-007) ou initiales" autocomplete="off"
+           autocapitalize="characters" aria-label="Numéro ou initiales" required>
+    <button class="bouton principal">Chercher</button>
+  </form>
+
+  {% if resultats is not none %}
+    {% if resultats %}
+      <ul class="resultats">
+      {% for pt, etats in resultats %}
+        <li>
+          <a href="{{ url_for('chirurgien.patient', numero=pt.numero) }}">
+            <span class="num">{{ pt.numero }}</span>
+            <span>{{ pt.initiales }}, {{ pt.age_ans }} ans</span>
+            <span class="aide">{% if pt.intervention %}opéré le {{ pt.intervention.date_intervention|date_fr }}{% else %}intervention non saisie{% endif %}</span>
+            <span class="puces">
+              {% for e in etats %}<span class="puce s-{{ e.statut }}" title="{{ e.libelle_statut }}">{{ e.echeance }}</span>{% endfor %}
+            </span>
+          </a>
+        </li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p class="vide">Aucun patient trouvé pour « {{ q }} ». Vérifiez le numéro noté dans le dossier.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

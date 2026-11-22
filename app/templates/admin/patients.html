@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block contenu %}
+<h1>Patients <span class="compte">{{ liste|length }}</span></h1>
+<section class="carte">
+  {% if liste %}
+  <div class="defile">
+  <table class="tableau">
+    <thead><tr><th>Numéro</th><th>Initiales</th><th>Âge</th><th>Côté</th><th>Voie d'abord</th><th>Opéré le</th><th>Suivi</th><th>Inclus par</th></tr></thead>
+    <tbody>
+    {% for pt, etats in liste %}
+      <tr>
+        <td><a href="{{ url_for('admin.patient', numero=pt.numero) }}">{{ pt.numero }}</a></td>
+        <td>{{ pt.initiales }}</td>
+        <td>{{ pt.age_ans }}</td>
+        <td>{{ libelle(R.COTES, pt.cote) }}</td>
+        <td>{{ libelle(R.VOIES_ABORD, pt.intervention.voie_abord) if pt.intervention else "" }}</td>
+        <td>{{ pt.intervention.date_intervention|date_fr if pt.intervention else "" }}</td>
+        <td class="puces">{% for e in etats %}<span class="puce s-{{ e.statut }}" title="{{ e.libelle_statut }}">{{ e.echeance }}</span>{% endfor %}</td>
+        <td>{{ pt.chirurgien.nom if pt.chirurgien else "" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="legende">
+    <span class="puce s-realisee">Réalisée</span> <span class="puce s-a_faire">À faire</span>
+    <span class="puce s-en_retard">En retard</span> <span class="puce s-a_venir">À venir</span>
+    <span class="puce s-non_realisee">Non réalisée</span> <span class="puce s-attente_intervention">Intervention non saisie</span>
+  </p>
+  {% else %}<p class="vide">Aucun patient pour l'instant.</p>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block contenu %}
+<section class="carte">
+  <h1>Qui êtes-vous ?</h1>
+  <p class="aide">Votre téléphone s'en souviendra. Vos saisies seront enregistrées à votre nom.</p>
+  {% if chirurgiens %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="suite" value="{{ suite }}">
+    <div class="liste-noms">
+      {% for c in chirurgiens %}
+        <button class="bouton nom" name="chirurgien_id" value="{{ c.id }}">{{ c.nom }}</button>
+      {% endfor %}
+    </div>
+  </form>
+  <p class="aide">Votre nom n'apparaît pas ? Demandez à l'administratrice de l'ajouter.</p>
+  {% else %}
+  <p>Aucun chirurgien n'est encore enregistré. L'administratrice doit d'abord ajouter les noms.</p>
+  {% endif %}
+</section>
+{% endblock %}

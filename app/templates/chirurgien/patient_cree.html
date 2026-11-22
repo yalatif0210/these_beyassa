@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block contenu %}
+<section class="carte centre">
+  <p>Patient enregistré</p>
+  <p class="numero-geant">{{ patient.numero }}</p>
+  <p class="alerte-douce"><strong>Notez ce numéro dans le dossier de l'enfant.</strong><br>
+    Il servira à retrouver le patient à chaque visite.</p>
+  <div class="actions colonne">
+    <a class="bouton principal" href="{{ url_for('chirurgien.intervention', numero=patient.numero) }}">Saisir l'intervention maintenant</a>
+    <a class="bouton secondaire" href="{{ url_for('chirurgien.patient', numero=patient.numero) }}">Voir le suivi du patient</a>
+    <a class="bouton secondaire" href="{{ url_for('chirurgien.accueil') }}">Retour à l'accueil</a>
+  </div>
+</section>
+{% endblock %}

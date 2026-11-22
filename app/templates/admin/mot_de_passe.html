@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block contenu %}
+<section class="carte etroite">
+  <h1>Changer le mot de passe</h1>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="champ"><label for="ancien">Mot de passe actuel</label>
+      <input id="ancien" name="ancien" type="password" autocomplete="current-password" required></div>
+    <div class="champ"><label for="nouveau">Nouveau mot de passe (8 caractères minimum)</label>
+      <input id="nouveau" name="nouveau" type="password" autocomplete="new-password" required></div>
+    <div class="champ"><label for="confirmation">Confirmation</label>
+      <input id="confirmation" name="confirmation" type="password" autocomplete="new-password" required></div>
+    <button class="bouton principal">Enregistrer</button>
+  </form>
+</section>
+{% endblock %}
