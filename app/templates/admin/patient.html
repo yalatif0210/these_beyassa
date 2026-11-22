@@ -12,7 +12,6 @@
   <div class="titre-carte"><h2>Inclusion</h2><a href="{{ url_for('admin.modifier_patient', numero=patient.numero) }}">Modifier</a></div>
   <dl>
     {{ l("Âge", patient.age_ans ~ " ans") }}
-    {{ l("Sexe", libelle(R.SEXES, patient.sexe)) }}
     {{ l("Niveau scolaire", patient.niveau_scolaire) }}
     {{ l("Consentement parental", on(patient.consentement_parental)) }}
     {{ l("Date de consultation", patient.date_consultation|date_fr) }}
@@ -95,6 +94,7 @@
     <form method="post" action="{{ url_for('admin.effacer_visite', numero=patient.numero, echeance=e.echeance) }}"
           onsubmit="return confirm('Effacer la visite {{ e.echeance }} ? Elle pourra être saisie à nouveau.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="empreinte" value="{{ v|empreinte }}">
       <button class="bouton discret petit">Effacer cette visite</button>
     </form>
     {% endif %}
@@ -107,6 +107,7 @@
   <p class="aide">Pour un doublon ou une erreur d'inclusion. Toutes ses données seront effacées définitivement.</p>
   <form method="post" action="{{ url_for('admin.supprimer_patient', numero=patient.numero) }}" class="en-ligne-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="empreinte" value="{{ patient|empreinte }}">
     <input name="confirmation" placeholder="Tapez {{ patient.numero }}" autocomplete="off" aria-label="Confirmation">
     <button class="bouton danger">Supprimer</button>
   </form>

@@ -1,0 +1,17 @@
+{# Bandeau affiché quand une saisie interrompue a été restaurée depuis son brouillon. #}
+{% if brouillon_restaure is not none %}
+<div class="flash flash-info bandeau-brouillon" role="status">
+  <span class="icone" aria-hidden="true">history</span>
+  <span>
+    <strong>Saisie en cours restaurée.</strong>
+    Dernière modification {% if brouillon_restaure < 1 %}il y a moins d'une minute{% elif brouillon_restaure < 120 %}il y a {{ brouillon_restaure }} min{% else %}il y a {{ (brouillon_restaure / 60)|round|int }} h{% endif %}.
+    Vérifiez les champs avant d'enregistrer.
+  </span>
+  <form method="post" action="{{ url_for('chirurgien.effacer_brouillon') }}"
+        onsubmit="return confirm('Effacer la saisie en cours et repartir d\'un formulaire vide ?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="_cle" value="{{ cle_brouillon }}">
+    <button class="lien">Repartir de zéro</button>
+  </form>
+</div>
+{% endif %}

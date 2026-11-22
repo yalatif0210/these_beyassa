@@ -5,7 +5,6 @@
              attrs='autocapitalize="characters" autocomplete="off" maxlength="10"') }}
   {{ m.texte("age_ans", valeurs, erreurs, "Âge (ans)", requis=True, type="number", aide="Étude : enfants de 1 à 10 ans",
              attrs='inputmode="numeric" min="0" max="17"') }}
-  {{ m.radios("sexe", R.SEXES, valeurs, erreurs, "Sexe") }}
   {{ m.radios("niveau_scolaire", R.NIVEAUX_SCOLAIRES, valeurs, erreurs, "Niveau scolaire") }}
   {{ m.radios("consentement_parental", R.OUI_NON, valeurs, erreurs, "Consentement des parents donné ?") }}
 </section>

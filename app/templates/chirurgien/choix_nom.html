@@ -3,6 +3,7 @@
 <section class="carte">
   <h1>Qui êtes-vous ?</h1>
   <p class="aide">Votre téléphone s'en souviendra. Vos saisies seront enregistrées à votre nom.</p>
+  <p class="alerte-douce">Après votre première saisie, ce nom ne pourra plus être changé sur ce téléphone.</p>
   {% if chirurgiens %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

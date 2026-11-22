@@ -1,0 +1,11 @@
+{# Sous le formulaire : auteur de la saisie et état de la sauvegarde automatique. #}
+<div class="pied-saisie">
+  {% if chirurgien_connecte %}
+  <p class="auteur-saisie"><span class="icone petite" aria-hidden="true">person</span>
+    Saisie enregistrée au nom de <strong>{{ chirurgien_connecte.nom }}</strong></p>
+  {% endif %}
+  <p class="etat-brouillon" id="etat-brouillon" aria-live="polite">
+    <span class="icone petite" aria-hidden="true">cloud_done</span>
+    <span class="etat-texte">Sauvegarde automatique activée : en cas de coupure, la saisie sera retrouvée.</span>
+  </p>
+</div>

@@ -1,4 +1,5 @@
 """Espace administrateur : tableau de bord, données complètes, corrections, paramètres, export."""
+import hmac
 import io
 from datetime import date, timedelta
 from functools import wraps
@@ -8,10 +9,12 @@ import qrcode.image.svg
 from flask import (Blueprint, Response, current_app, flash, redirect, render_template, request, session,
                    url_for, abort)
 from markupsafe import Markup
+from sqlalchemy.exc import IntegrityError
 
 from . import limiter
 from .export import colonnes, csv_dictionnaire, csv_donnees
-from .models import Admin, Chirurgien, Intervention, Parametres, Patient, Visite, db, nouveau_jeton
+from .models import (Admin, Brouillon, Chirurgien, Envoi, Intervention, Parametres, Patient, Visite, db, empreinte,
+                     nouveau_jeton)
 from .planning import ecart_jours, etats_patient, hors_fenetre
 from .referentiels import CODES_ECHEANCES, COEFFICIENTS_VOLUME, LIBELLES_ECHEANCE
 from .saisie import Lecteur, lire_intervention, lire_patient, lire_visite, valeurs_formulaire
@@ -69,6 +72,10 @@ def mot_de_passe():
     if request.method == "POST":
         a = admin_courant()
         ancien, nouveau, conf = (request.form.get(k) or "" for k in ("ancien", "nouveau", "confirmation"))
+        if not a.verifier(ancien) and nouveau and nouveau == conf and a.verifier(nouveau):
+            # Envoi rejoué : le changement a déjà été fait.
+            flash("Mot de passe modifié.", "succes")
+            return redirect(url_for("admin.tableau_de_bord"))
         if not a.verifier(ancien):
             flash("Mot de passe actuel incorrect.", "erreur")
         elif len(nouveau) < 8:
@@ -183,7 +190,12 @@ def intervention(numero):
             if interv is None:
                 cible.patient = pt
                 db.session.add(cible)
-            db.session.commit()
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash("L'intervention venait d'être saisie par ailleurs : vérifiez-la ci-dessous.", "info")
+                return redirect(url_for("admin.patient", numero=numero))
             flash("Intervention enregistrée.", "succes")
             return redirect(url_for("admin.patient", numero=numero))
         db.session.rollback()
@@ -211,7 +223,12 @@ def visite(numero, echeance):
                 v = Visite(patient=pt, echeance=echeance)
                 db.session.add(v)
             v.statut = "non_realisee"
-            db.session.commit()
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash(f"La visite {echeance} venait d'être saisie par ailleurs : vérifiez-la ci-dessous.", "info")
+                return redirect(url_for("admin.patient", numero=numero))
             flash(f"Visite {echeance} marquée comme non réalisée.", "succes")
             return redirect(url_for("admin.patient", numero=numero))
         cible = v or Visite(echeance=echeance)
@@ -220,7 +237,12 @@ def visite(numero, echeance):
             if v is None:
                 cible.patient = pt
                 db.session.add(cible)
-            db.session.commit()
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash(f"La visite {echeance} venait d'être saisie par ailleurs : vérifiez-la ci-dessous.", "info")
+                return redirect(url_for("admin.patient", numero=numero))
             msg = f"Visite {echeance} enregistrée."
             if hors_fenetre(pt, echeance, cible.date_visite, Parametres.courants()):
                 msg += " La date est en dehors de la marge prévue."
@@ -238,7 +260,12 @@ def visite(numero, echeance):
 def effacer_visite(numero, echeance):
     pt = _patient(numero)
     v = pt.visite(echeance)
-    if v:
+    attendue = request.form.get("empreinte")
+    if v is None:
+        flash(f"La visite {echeance} était déjà effacée.", "info")
+    elif attendue is not None and empreinte(v) != attendue:
+        flash(f"La visite {echeance} a été ressaisie entre-temps : elle n'a pas été effacée. Vérifiez-la.", "erreur")
+    else:
         db.session.delete(v)
         db.session.commit()
         flash(f"Visite {echeance} effacée : elle peut être saisie à nouveau.", "succes")
@@ -248,11 +275,24 @@ def effacer_visite(numero, echeance):
 @bp.route("/patient/<numero>/supprimer", methods=["POST"])
 @connexion_requise
 def supprimer_patient(numero):
-    pt = _patient(numero)
+    pt = Patient.query.filter_by(numero=numero).first()
+    attendu = request.form.get("empreinte")
+    if pt is None:
+        flash(f"Le patient {numero} était déjà supprimé.", "info")
+        return redirect(url_for("admin.patients"))
+    if attendu is not None and empreinte(pt) != attendu:
+        flash(f"Le numéro {numero} correspond maintenant à un autre patient : rien n'a été supprimé.", "erreur")
+        return redirect(url_for("admin.patient", numero=numero))
     if request.form.get("confirmation") != pt.numero:
         flash(f"Pour supprimer, tapez exactement {pt.numero}.", "erreur")
         return redirect(url_for("admin.patient", numero=numero))
     db.session.delete(pt)
+    Envoi.query.filter(Envoi.resultat.like(f"%/patient/{pt.numero}/%")
+                       | (Envoi.resultat == url_for("chirurgien.patient", numero=pt.numero))
+                       ).delete(synchronize_session=False)
+    # Les brouillons de ce patient disparaissent aussi : son numéro pourrait être réattribué.
+    Brouillon.query.filter(db.or_(Brouillon.cle == f"intervention:{pt.numero}",
+                                  Brouillon.cle.like(f"visite:{pt.numero}:%"))).delete(synchronize_session=False)
     db.session.commit()
     flash(f"Patient {numero} supprimé.", "succes")
     return redirect(url_for("admin.patients"))
@@ -268,11 +308,15 @@ def chirurgiens():
         if not nom:
             flash("Indiquez un nom.", "erreur")
         elif Chirurgien.query.filter(db.func.lower(Chirurgien.nom) == nom.lower()).first():
-            flash("Ce nom existe déjà.", "erreur")
+            flash(f"Ce nom existe déjà : {nom} est dans la liste.", "info")
         else:
             db.session.add(Chirurgien(nom=nom))
-            db.session.commit()
-            flash(f"{nom} ajouté.", "succes")
+            try:
+                db.session.commit()
+                flash(f"{nom} ajouté.", "succes")
+            except IntegrityError:
+                db.session.rollback()
+                flash(f"Ce nom existe déjà : {nom} est dans la liste.", "info")
         return redirect(url_for("admin.chirurgiens"))
     return render_template("admin/chirurgiens.html", chirurgiens=Chirurgien.query.order_by(Chirurgien.nom).all())
 
@@ -281,9 +325,25 @@ def chirurgiens():
 @connexion_requise
 def basculer_chirurgien(cid):
     c = db.session.get(Chirurgien, cid) or abort(404)
-    c.actif = not c.actif
+    vise = request.form.get("actif")
+    if vise not in ("0", "1"):
+        abort(400)
+    c.actif = vise == "1"
     db.session.commit()
     flash(f"{c.nom} {'réactivé' if c.actif else 'désactivé'}.", "succes")
+    return redirect(url_for("admin.chirurgiens"))
+
+
+@bp.route("/chirurgiens/<int:cid>/liberer", methods=["POST"])
+@connexion_requise
+def liberer_chirurgien(cid):
+    """Les téléphones où ce nom est verrouillé devront rechoisir le nom (après une erreur de choix)."""
+    c = db.session.get(Chirurgien, cid) or abort(404)
+    vue = request.form.get("generation", type=int)
+    if vue is None or vue == c.generation_session:
+        c.generation_session += 1
+        db.session.commit()
+    flash(f"Les téléphones utilisés au nom de {c.nom} redemanderont de choisir le nom.", "succes")
     return redirect(url_for("admin.chirurgiens"))
 
 
@@ -341,6 +401,10 @@ def _date_libre(L, nom):
 @connexion_requise
 def nouveau_qr():
     p = Parametres.courants()
+    vu = request.form.get("jeton_actuel") or ""
+    if vu and not hmac.compare_digest(vu, p.jeton_acces):
+        flash("Un nouveau QR code a déjà été généré : c'est celui affiché ci-dessous.", "info")
+        return redirect(url_for("admin.parametres"))
     p.jeton_acces = nouveau_jeton()
     db.session.commit()
     flash("Nouveau QR code généré. L'ancien ne fonctionne plus : imprimez et affichez le nouveau.", "succes")

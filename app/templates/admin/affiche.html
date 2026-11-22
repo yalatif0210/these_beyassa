@@ -6,7 +6,9 @@
   <title>Affiche QR code</title>
   <style>
     @page { size: A4; margin: 15mm; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; color: #12312f; }
+    @font-face { font-family: "Inter"; font-weight: 400 700; src: url("{{ url_for('static', filename='polices/inter-latin.woff2') }}") format("woff2"); }
+    body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; color: #1e293b; }
+    h1 { color: #4f46e5; }
     h1 { font-size: 26pt; margin: 10mm 0 4mm; }
     .sous { font-size: 15pt; margin: 0 0 8mm; }
     .qr svg { width: 120mm; height: 120mm; }

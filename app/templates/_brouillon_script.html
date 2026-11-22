@@ -1,0 +1,126 @@
+{# Sauvegarde automatique du formulaire (brouillon), robuste aux coupures réseau, sans bibliothèque.
+
+   Garanties :
+   - chaque modification reçoit un numéro croissant (_seq, horodatage en ms) ; le serveur ignore
+     une sauvegarde plus ancienne ou déjà reçue : l'ordre d'arrivée et les renvois sont sans effet ;
+   - une seule sauvegarde en vol à la fois ; la suivante part quand la précédente a répondu ;
+   - tant que le serveur n'a pas confirmé, une copie « en attente » est gardée sur le téléphone
+     (localStorage) ; elle est effacée dès la confirmation, et renvoyée au retour du réseau ou à la
+     réouverture du formulaire si elle est plus récente que le brouillon du serveur ;
+   - une copie locale d'un formulaire déjà enregistré (page close côté serveur) est jetée, jamais restaurée. #}
+<script>
+(function () {
+  var f = document.querySelector('form.formulaire');
+  var etat = document.getElementById('etat-brouillon');
+  if (!f || !etat) return;
+  var url = "{{ url_for('chirurgien.sauver_brouillon') }}";
+  var cle = "{{ cle_brouillon }}";
+  var serveur = {{ brouillon_serveur|tojson }};
+  var stockage = 'beyassa:brouillon:{{ chirurgien_connecte.id if chirurgien_connecte else 0 }}:' + cle;
+  var page = (f.querySelector('input[name="_page"]') || {}).value || '';
+  var TECHNIQUES = { csrf_token: 1, _cle: 1, _page: 1, _seq: 1, action: 1, confirmer_nouveau: 1 };
+  var texte = etat.querySelector('.etat-texte'), icone = etat.querySelector('.icone');
+  var minuterie = null, enVol = false, soumis = false;
+  var seqCourant = 0, seqConfirme = 0;
+
+  var champSeq = f.querySelector('input[name="_seq"]');
+  if (!champSeq) {
+    champSeq = document.createElement('input');
+    champSeq.type = 'hidden'; champSeq.name = '_seq'; f.appendChild(champSeq);
+  }
+
+  // ---------------------------------------------------------------- utilitaires
+  function lireLocal() { try { return JSON.parse(localStorage.getItem(stockage) || 'null'); } catch (e) { return null; } }
+  function ecrireLocal(o) { try { localStorage.setItem(stockage, JSON.stringify(o)); } catch (e) {} }
+  function effacerLocal() { try { localStorage.removeItem(stockage); } catch (e) {} }
+  function afficher(classe, ic, msg) { etat.className = 'etat-brouillon ' + classe; icone.textContent = ic; texte.textContent = msg; }
+  function heure() { var n = new Date(); return ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2); }
+  function valeurs() {
+    var o = {};
+    new FormData(f).forEach(function (v, k) { if (!TECHNIQUES[k]) o[k] = v; });
+    return o;
+  }
+  function donnees(seq) {
+    var d = new FormData(f);
+    d.set('_cle', cle); d.set('_seq', String(seq)); d.delete('action');
+    return d;
+  }
+  function remplir(o) {
+    Array.prototype.forEach.call(f.elements, function (el) {
+      if (!el.name || TECHNIQUES[el.name] || el.type === 'hidden' || el.type === 'submit') return;
+      if (el.type === 'radio') el.checked = (o[el.name] === el.value);
+      else if (el.type === 'checkbox') el.checked = Object.prototype.hasOwnProperty.call(o, el.name);
+      else el.value = o[el.name] !== undefined ? o[el.name] : '';
+    });
+  }
+
+  // ------------------------------------------------------------------ envoi
+  function sauver() {
+    minuterie = null;
+    if (soumis || enVol || seqCourant <= seqConfirme) return;
+    var seq = seqCourant;
+    enVol = true;
+    afficher('en-cours', 'cloud_upload', 'Sauvegarde…');
+    fetch(url, { method: 'POST', body: donnees(seq), credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) throw new Error(String(r.status));
+        seqConfirme = Math.max(seqConfirme, seq);
+        var l = lireLocal();
+        if (l && l.seq <= seqConfirme) effacerLocal();
+        afficher('ok', 'cloud_done', 'Brouillon sauvegardé à ' + heure() + '.');
+      })
+      .catch(function () {
+        afficher('erreur', 'cloud_off', 'Pas de réseau : la saisie est gardée sur ce téléphone et sera envoyée dès le retour de la connexion.');
+      })
+      .then(function () {
+        enVol = false;
+        if (seqCourant > seqConfirme && !soumis) minuterie = setTimeout(sauver, navigator.onLine === false ? 10000 : 1500);
+      });
+  }
+
+  function modifie() {
+    seqCourant = Math.max(Date.now(), seqCourant + 1);
+    champSeq.value = String(seqCourant);
+    ecrireLocal({ page: page, seq: seqCourant, valeurs: valeurs() });
+    if (minuterie) clearTimeout(minuterie);
+    minuterie = setTimeout(sauver, 1500);
+  }
+
+  function urgence() {
+    if (soumis || seqCourant <= seqConfirme || !navigator.sendBeacon) return;
+    // La copie locale reste jusqu'à une confirmation explicite : sendBeacon ne donne pas de réponse.
+    navigator.sendBeacon(url, donnees(seqCourant));
+  }
+
+  // ------------------------------------------------- reprise d'une copie locale
+  (function reprendre() {
+    var l = lireLocal();
+    if (!l) return;
+    if (serveur.clos && l.page === serveur.page) { effacerLocal(); return; }  // déjà enregistré
+    if (!(l.seq > (serveur.seq || 0))) { effacerLocal(); return; }           // le serveur a plus récent
+    remplir(l.valeurs || {});
+    afficher('erreur', 'smartphone', 'Saisie non envoyée retrouvée sur ce téléphone : envoi en cours…');
+    seqCourant = Math.max(l.seq, Date.now());
+    champSeq.value = String(seqCourant);
+    ecrireLocal({ page: page, seq: seqCourant, valeurs: l.valeurs || {} });
+    sauver();
+  })();
+
+  // --------------------------------------------------------------- événements
+  f.addEventListener('input', modifie);
+  f.addEventListener('change', modifie);
+  // Phase de remontée : on ignore un envoi annulé par une boîte de confirmation.
+  document.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;
+    soumis = true;
+    if (minuterie) clearTimeout(minuterie);
+  });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') urgence(); });
+  window.addEventListener('pagehide', urgence);
+  window.addEventListener('online', function () { if (seqCourant > seqConfirme) sauver(); });
+  // Retour arrière après un envoi qui n'a pas abouti (coupure) : la page redevient active.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) { soumis = false; if (seqCourant > seqConfirme) sauver(); }
+  });
+})();
+</script>

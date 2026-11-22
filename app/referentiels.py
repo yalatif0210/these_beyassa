@@ -1,6 +1,7 @@
 """Listes de choix et calendrier de suivi de l'étude."""
 
-SEXES = [("M", "Masculin"), ("F", "Féminin")]
+# L'étude ne porte que sur des garçons : le sexe n'est pas demandé, il est enregistré « M » d'office.
+SEXE_ETUDE = "M"
 
 NIVEAUX_SCOLAIRES = [
     ("Non scolarisé", "Non scolarisé"),

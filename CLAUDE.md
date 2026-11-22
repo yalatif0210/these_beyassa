@@ -9,7 +9,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 
 ## État actuel
 
-- Le code est complet et fonctionne : 21 tests pytest passent (`python -m pytest`).
+- Le code est complet et fonctionne : 45 tests pytest passent (`python -m pytest`).
 - Les écrans ont été vérifiés sur mobile (390 px) et sur ordinateur, avec des données fictives.
 - Rien n'est encore déployé.
 - Dépôt git sur la branche `main`, publié sur GitHub : `origin` = https://github.com/yalatif0210/these_beyassa.git. Auteur configuré localement : `yalatif0210`.
@@ -72,7 +72,7 @@ Elle remplace la fiche d'enquête papier. Le développeur est Markov. Le « prop
 
 ```
 app/__init__.py      create_app, configuration par variables d'environnement, en-têtes de sécurité, commandes CLI
-app/models.py        Parametres (ligne unique id=1), Admin, Chirurgien, Patient, Intervention, Visite
+app/models.py        Parametres (ligne unique id=1), Admin, Chirurgien, Patient, Intervention, Visite, Brouillon, Envoi
 app/referentiels.py  listes de choix, échéances, rubriques par échéance (SOURCE UNIQUE des listes)
 app/planning.py      date prévue, fenêtre, statut (realisee, non_realisee, a_venir, a_faire, en_retard, attente_intervention)
 app/saisie.py        classe Lecteur : lecture et validation des formulaires, partagée entre chirurgien et admin
@@ -81,6 +81,7 @@ app/admin.py         blueprint /admin : tableau de bord, fiches, corrections, ch
 app/export.py        colonnes() = source unique pour le CSV et pour le dictionnaire des variables
 app/templates/forms/ formulaires partagés (_inclusion, _intervention, _visite), inclus via formulaire.html
 app/templates/_macros.html  macros de champs (radios en « pilules », cases, échelle de douleur, dimensions)
+app/templates/aide/   guide d'utilisation de chaque écran, nommé <blueprint>_<vue>.html (ex. chirurgien_accueil.html)
 ```
 
 ## Sécurité (sans mot de passe côté chirurgien)
@@ -88,13 +89,24 @@ app/templates/_macros.html  macros de champs (radios en « pilules », cases, é
 - Le QR code encode `/acces/<jeton>`, un jeton aléatoire `secrets.token_urlsafe(24)` stocké dans `Parametres.jeton_acces`. Il est comparé avec `hmac.compare_digest`.
 - Le jeton est placé dans une session permanente (365 jours), puis la page redirige pour qu'il disparaisse de la barre d'adresse. Avec `Referrer-Policy: no-referrer`, il ne fuit pas vers d'autres sites.
 - Si l'administratrice régénère le jeton, toutes les sessions des chirurgiens sont invalidées.
-- Le nom du chirurgien est choisi une seule fois et gardé en session. Il est enregistré sur chaque saisie (`chirurgien_id`).
+- Le nom du chirurgien est choisi une seule fois et gardé en session. Il est enregistré sur chaque saisie (`chirurgien_id`), et aucun écran ne permet de changer l'auteur d'une saisie.
+- **Nom verrouillé** : dès la première saisie enregistrée depuis un téléphone (`session["nom_verrouille"]`), ce téléphone ne peut plus changer de nom. L'administratrice peut « libérer les téléphones » d'un chirurgien (`Chirurgien.generation_session` incrémenté : les sessions qui portent une ancienne valeur doivent rechoisir le nom). Effacer les données du navigateur et rescanner le QR code contourne le verrou : c'est une protection contre l'erreur, pas contre la malveillance.
+- **Brouillons** : chaque formulaire chirurgien est sauvegardé automatiquement sur le serveur (table `brouillons`, une ligne par chirurgien et par formulaire, clé `nouveau`, `intervention:HYD-001` ou `visite:HYD-001:J7`), 1,5 s après chaque modification et à la mise en arrière-plan (`sendBeacon`). Il est restauré à la réouverture et « clos » dans la même transaction que l'enregistrement ; le champ `_page` fait ignorer une sauvegarde tardive de la même page. La suppression d'un patient efface ses brouillons (son numéro peut être réattribué). Les brouillons ne sont pas exportés.
 - La recherche n'affiche ni la voie d'abord ni aucune donnée clinique.
 - Les chirurgiens ne peuvent pas modifier une saisie existante. Seule l'administratrice corrige.
 - En-têtes `X-Robots-Tag: noindex`, `X-Frame-Options`, `nosniff`, `Cache-Control: no-store`.
 - Limites : recherche 30/min, accès 20/min, connexion admin 10/min. Le stockage `memory://` est propre à chaque worker. Passer à Redis si besoin.
 - Nginx n'écrit pas `/acces/` dans ses journaux.
 - `COOKIE_SECURISE=true` en production (HTTPS obligatoire), `false` en local en HTTP.
+
+## Idempotence (règle pour toute nouvelle opération d'écriture)
+
+Toute requête qui écrit doit pouvoir être rejouée sans effet en double : double appui, rechargement, renvoi du navigateur, réponse perdue pendant une coupure réseau.
+- **Saisies chirurgien** (patient, intervention, visite, visite non réalisée) : le formulaire porte un jeton d'envoi `_page` (16 hex, généré à l'affichage). La saisie réussie enregistre ce jeton dans la table `envois` **dans la même transaction** ; un envoi rejoué renvoie vers `Envoi.resultat` sans rien créer. Envois simultanés : la contrainte unique (jeton, `interventions.patient_id`, `uq_visite_patient_echeance`) lève `IntegrityError`, on annule et on renvoie vers le résultat existant.
+- **Post/Redirect/Get** : toute création réussie se termine par une redirection (`/patient/<numero>/enregistre` pour un nouveau patient), jamais par l'affichage direct d'une page.
+- **Brouillons** : `_seq` (horodatage ms de la modification sur le téléphone) ; le serveur ignore une sauvegarde plus ancienne ou déjà reçue. Une seule sauvegarde en vol ; copie locale « en attente » (localStorage, clé par chirurgien et formulaire) effacée dès la confirmation du serveur, jamais restaurée si la page a déjà été enregistrée.
+- **Actions admin** : envoyer l'état visé ou l'élément précis, jamais une bascule. Activer/désactiver envoie `actif=0/1` ; « libérer » envoie la `generation_session` affichée ; nouveau QR envoie le `jeton_actuel` affiché ; supprimer un patient et effacer une visite envoient l'`empreinte` (id + date de création : SQLite réutilise l'id d'une ligne supprimée et un numéro de patient peut être réattribué). Les mises à jour complètes (paramètres, corrections) sont idempotentes par nature.
+- Le bouton d'envoi est désactivé pendant l'envoi (`base.html`), mais ce n'est qu'un confort : la garantie est côté serveur.
 
 ## Conventions
 
@@ -103,6 +115,7 @@ app/templates/_macros.html  macros de champs (radios en « pilules », cases, é
 - Garder `referentiels.py` et `export.colonnes()` comme sources uniques. Un nouveau champ demande de modifier : le modèle, `saisie.py`, le formulaire partagé, la fiche admin (`admin/patient.html`), `export.colonnes()` et un test.
 - Interface d'abord pensée pour le téléphone : zones tactiles de 44 px minimum, choix en pilules plutôt qu'en listes déroulantes.
 - `deploy/sauvegarde.sh` doit rester en fins de ligne LF (voir `.gitattributes`).
+- **Chaque écran a son guide** : un nouvel écran demande un fichier `app/templates/aide/<blueprint>_<vue>.html` (le bouton « Aide » n'apparaît que s'il existe) et son ajout dans `test_chaque_ecran_a_son_guide`. Un changement de comportement demande de mettre le guide à jour.
 
 ## Commandes utiles
 

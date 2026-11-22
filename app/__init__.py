@@ -10,7 +10,7 @@ from flask_wtf.csrf import CSRFError, CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import referentiels
-from .models import Admin, Parametres, db
+from .models import Admin, Parametres, db, empreinte
 
 csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
@@ -70,6 +70,8 @@ def create_app(config=None):
     @app.context_processor
     def injecter():
         return {"R": referentiels, "libelle": referentiels.libelle, "nom_etude": app.config["NOM_ETUDE"]}
+
+    app.add_template_filter(empreinte, "empreinte")
 
     @app.template_filter("date_fr")
     def date_fr(d):

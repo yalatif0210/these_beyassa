@@ -4,9 +4,11 @@
 <h1>Nouveau patient</h1>
 
 {% if erreurs %}<div class="flash flash-erreur" role="alert">Certains champs sont à corriger (en rouge).</div>{% endif %}
+{% include "_brouillon_bandeau.html" %}
 
 <form method="post" class="formulaire" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="_page" value="{{ page_brouillon }}">
 
   {% if doublons %}
   <section class="alerte">
@@ -26,6 +28,7 @@
 
   {% with patient=None %}{% include "forms/_inclusion.html" %}{% endwith %}
 
+  {% include "_brouillon_pied.html" %}
   {% if not doublons %}
   <div class="actions">
     <button type="submit" class="bouton principal">Enregistrer le patient</button>
@@ -33,4 +36,5 @@
   </div>
   {% endif %}
 </form>
+{% include "_brouillon_script.html" %}
 {% endblock %}

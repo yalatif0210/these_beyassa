@@ -11,23 +11,36 @@
 </section>
 <section class="carte">
   {% if chirurgiens %}
+  <div class="defile">
   <table class="tableau">
-    <thead><tr><th>Nom</th><th>État</th><th></th></tr></thead>
+    <thead><tr><th>Nom</th><th>État</th><th>Actions</th></tr></thead>
     <tbody>
     {% for c in chirurgiens %}
       <tr class="{{ '' if c.actif else 'inactif' }}">
         <td>{{ c.nom }}</td>
         <td>{{ "Actif" if c.actif else "Désactivé" }}</td>
-        <td>
+        <td class="actions-tableau">
           <form method="post" action="{{ url_for('admin.basculer_chirurgien', cid=c.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="actif" value="{{ '0' if c.actif else '1' }}">
             <button class="lien">{{ "Désactiver" if c.actif else "Réactiver" }}</button>
           </form>
+          {% if c.actif %}
+          <form method="post" action="{{ url_for('admin.liberer_chirurgien', cid=c.id) }}"
+                onsubmit="return confirm('Libérer les téléphones de {{ c.nom }} ? Ils devront rechoisir le nom. Les saisies déjà enregistrées gardent leur auteur.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="generation" value="{{ c.generation_session }}">
+            <button class="lien">Libérer ses téléphones</button>
+          </form>
+          {% endif %}
         </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
+  <p class="aide">Sur chaque téléphone, le nom est verrouillé dès la première saisie enregistrée.
+    « Libérer ses téléphones » sert après une erreur de choix de nom : les saisies déjà enregistrées gardent leur auteur.</p>
   {% else %}<p class="vide">Aucun chirurgien. Ajoutez les noms avant de diffuser le QR code.</p>{% endif %}
 </section>
 {% endblock %}

@@ -108,7 +108,6 @@ def lire_patient(patient, form):
     if initiales and not re.fullmatch(r"[A-ZÀ-Ÿ\-]{1,6}", initiales):
         L.erreurs["initiales"] = "Lettres uniquement (ex. AD ou A-D)."
     age = L.entier("age_ans", 0, 17)
-    sexe = L.choix("sexe", R.SEXES)
     niveau = L.choix("niveau_scolaire", R.NIVEAUX_SCOLAIRES)
     consentement = L.oui_non("consentement_parental")
     date_consult = L.jour("date_consultation")
@@ -117,7 +116,7 @@ def lire_patient(patient, form):
     if not L.erreurs:
         patient.initiales = initiales
         patient.age_ans = age
-        patient.sexe = sexe
+        patient.sexe = R.SEXE_ETUDE  # étude réservée aux garçons : jamais lu du formulaire
         patient.niveau_scolaire = niveau
         patient.consentement_parental = consentement
         patient.date_consultation = date_consult

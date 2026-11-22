@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from app.models import Parametres, Patient, Visite, db
 
 INCLUSION = {
-    "initiales": "a.d", "age_ans": "4", "sexe": "M", "niveau_scolaire": "Préscolaire",
+    "initiales": "a.d", "age_ans": "4", "niveau_scolaire": "Préscolaire",
     "consentement_parental": "oui", "date_consultation": (date.today() - timedelta(days=100)).isoformat(),
     "type_hydrocele": "communicante", "cote": "droit",
 }
@@ -19,7 +19,7 @@ def intervention(jours_avant=95):
 
 def creer_patient(chir, **surcharge):
     data = {**INCLUSION, **surcharge}
-    r = chir.post("/nouveau", data=data)
+    r = chir.post("/nouveau", data=data, follow_redirects=True)
     assert r.status_code == 200
     return r
 
@@ -132,7 +132,7 @@ def test_alerte_doublon(app, chir):
     assert "existe peut-être déjà" in r.get_data(as_text=True)
     with app.app_context():
         assert Patient.query.count() == 1
-    r = chir.post("/nouveau", data={**INCLUSION, "age_ans": "5", "confirmer_nouveau": "1"})
+    r = chir.post("/nouveau", data={**INCLUSION, "age_ans": "5", "confirmer_nouveau": "1"}, follow_redirects=True)
     assert "HYD-002" in r.get_data(as_text=True)
 
 
@@ -250,3 +250,283 @@ def test_export(adm, chir):
     assert std.startswith("numero,initiales")
     dico = adm.get("/admin/export/dictionnaire.csv").get_data(as_text=True)
     assert "M6_atrophie" in dico and "voie_abord" in dico
+
+
+# ------------------------------------------------- verrouillage du nom
+
+def _id_chirurgien(app, nom):
+    from app.models import Chirurgien
+    with app.app_context():
+        c = Chirurgien.query.filter_by(nom=nom).first()
+        if c is None:
+            c = Chirurgien(nom=nom)
+            db.session.add(c)
+            db.session.commit()
+        return c.id
+
+
+def test_nom_modifiable_avant_la_premiere_saisie(chir):
+    r = chir.get("/changer-de-nom")
+    assert "/qui-etes-vous" in r.location
+
+
+def test_nom_verrouille_apres_la_premiere_saisie(app, chir):
+    autre = _id_chirurgien(app, "Dr Autre")
+    creer_patient(chir)
+    r = chir.get("/changer-de-nom")
+    assert r.status_code == 302 and r.location.endswith("/")
+    assert "verrouillé" in chir.get("/").get_data(as_text=True)
+    # Même en envoyant directement le formulaire, le nom ne change pas.
+    chir.post("/qui-etes-vous", data={"chirurgien_id": autre})
+    creer_patient(chir, initiales="ZZ", age_ans="8")
+    with app.app_context():
+        auteurs = {p.chirurgien.nom for p in Patient.query.all()}
+    assert auteurs == {"Dr Test"}
+
+
+def test_admin_libere_les_telephones(app, chir, adm):
+    autre = _id_chirurgien(app, "Dr Autre")
+    creer_patient(chir)
+    cid = _id_chirurgien(app, "Dr Test")
+    adm.post(f"/admin/chirurgiens/{cid}/liberer")
+    assert "/qui-etes-vous" in chir.get("/").location
+    chir.post("/qui-etes-vous", data={"chirurgien_id": autre})
+    creer_patient(chir, initiales="ZZ", age_ans="8")
+    with app.app_context():
+        par_initiales = {p.initiales: p.chirurgien.nom for p in Patient.query.all()}
+    # La saisie déjà enregistrée garde son auteur.
+    assert par_initiales == {"AD": "Dr Test", "ZZ": "Dr Autre"}
+
+
+# ---------------------------------------------------------- brouillons
+
+def test_brouillon_sauve_puis_restaure(chir):
+    r = chir.post("/brouillon", data={"_cle": "nouveau", "_page": "p1", "initiales": "QX", "age_ans": "6"})
+    assert r.status_code == 204
+    page = chir.get("/nouveau").get_data(as_text=True)
+    assert "Saisie en cours restaurée" in page and 'value="QX"' in page
+
+
+def test_brouillon_clos_apres_enregistrement(app, chir):
+    chir.post("/brouillon", data={"_cle": "nouveau", "_page": "p1", "initiales": "AD"})
+    creer_patient(chir, _page="p1")
+    # Une sauvegarde automatique partie juste avant l'envoi arrive après : elle est ignorée.
+    chir.post("/brouillon", data={"_cle": "nouveau", "_page": "p1", "initiales": "AD"})
+    page = chir.get("/nouveau").get_data(as_text=True)
+    assert "Saisie en cours restaurée" not in page
+
+
+def test_brouillon_conserve_si_formulaire_incomplet(chir):
+    chir.post("/nouveau", data={"initiales": "RT", "_page": "p2"})
+    page = chir.get("/nouveau").get_data(as_text=True)
+    assert "Saisie en cours restaurée" in page and 'value="RT"' in page
+
+
+def test_brouillon_visite_et_effacement(app, chir):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention(95))
+    cle = "visite:HYD-001:J7"
+    chir.post("/brouillon", data={"_cle": cle, "_page": "p3", "complications": "léger œdème"})
+    assert "léger œdème" in chir.get("/patient/HYD-001/visite/J7").get_data(as_text=True)
+    chir.post("/brouillon/effacer", data={"_cle": cle})
+    assert "léger œdème" not in chir.get("/patient/HYD-001/visite/J7").get_data(as_text=True)
+
+
+def test_brouillon_cle_invalide(chir):
+    assert chir.post("/brouillon", data={"_cle": "../admin"}).status_code == 400
+    assert chir.post("/brouillon", data={"_cle": "visite:HYD-001:X9"}).status_code == 400
+
+
+def test_brouillon_exige_le_qr_code(app):
+    r = app.test_client().post("/brouillon", data={"_cle": "nouveau"})
+    assert r.status_code == 302
+
+
+def test_brouillons_propres_a_chaque_chirurgien(app, chir, jeton):
+    chir.post("/brouillon", data={"_cle": "nouveau", "_page": "p1", "initiales": "QX"})
+    autre = app.test_client()
+    autre.get(f"/acces/{jeton}")
+    autre.post("/qui-etes-vous", data={"chirurgien_id": _id_chirurgien(app, "Dr Autre")})
+    assert "QX" not in autre.get("/nouveau").get_data(as_text=True)
+
+
+def test_suppression_patient_efface_ses_brouillons(app, adm, chir):
+    from app.models import Brouillon
+    creer_patient(chir)
+    chir.post("/brouillon", data={"_cle": "intervention:HYD-001", "_page": "p4", "duree_minutes": "20"})
+    adm.post("/admin/patient/HYD-001/supprimer", data={"confirmation": "HYD-001"})
+    with app.app_context():
+        assert Brouillon.query.filter(Brouillon.cle.like("%HYD-001%")).count() == 0
+
+
+# ------------------------------------------- idempotence (envois rejoués)
+
+JETON = "0123456789abcdef"
+
+
+def test_nouveau_patient_rejoue_sans_doublon(app, chir):
+    data = {**INCLUSION, "_page": JETON}
+    r1 = chir.post("/nouveau", data=data)
+    r2 = chir.post("/nouveau", data=data)
+    assert r1.status_code == 302 and r2.status_code == 302
+    assert r2.location == r1.location and r1.location.endswith("/patient/HYD-001/enregistre")
+    with app.app_context():
+        assert Patient.query.count() == 1
+    assert "aucun doublon" in chir.get(r2.location).get_data(as_text=True)
+
+
+def test_rejeu_apres_confirmation_de_doublon(app, chir):
+    creer_patient(chir)
+    data = {**INCLUSION, "age_ans": "5", "confirmer_nouveau": "1", "_page": JETON}
+    chir.post("/nouveau", data=data)
+    chir.post("/nouveau", data=data)
+    with app.app_context():
+        assert Patient.query.count() == 2
+
+
+def test_page_de_confirmation_rechargeable(app, chir):
+    r = chir.post("/nouveau", data={**INCLUSION, "_page": JETON})
+    for _ in range(2):
+        assert "HYD-001" in chir.get(r.location).get_data(as_text=True)
+    with app.app_context():
+        assert Patient.query.count() == 1
+
+
+def test_intervention_et_visites_rejouees(app, chir):
+    creer_patient(chir)
+    data = {**intervention(95), "_page": "a" * 16}
+    chir.post("/patient/HYD-001/intervention", data=data)
+    r = chir.post("/patient/HYD-001/intervention", data=data, follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert "rien n&#39;a été créé en double" in page and "est déjà saisie" not in page
+
+    j7 = {"date_visite": (date.today() - timedelta(days=88)).isoformat(), "douleur_score": "1",
+          "douleur_evaluateur": "enfant", "_page": "b" * 16}
+    chir.post("/patient/HYD-001/visite/J7", data=j7)
+    r = chir.post("/patient/HYD-001/visite/J7", data=j7, follow_redirects=True)
+    assert "rien n&#39;a été créé en double" in r.get_data(as_text=True)
+
+    m1 = {"action": "non_realisee", "_page": "c" * 16}
+    chir.post("/patient/HYD-001/visite/M1", data=m1)
+    r = chir.post("/patient/HYD-001/visite/M1", data=m1, follow_redirects=True)
+    assert "rien n&#39;a été créé en double" in r.get_data(as_text=True)
+    with app.app_context():
+        assert Visite.query.count() == 2
+
+
+def test_brouillon_dans_le_bon_ordre(chir):
+    def envoyer(seq, initiales):
+        return chir.post("/brouillon", data={"_cle": "nouveau", "_page": JETON, "_seq": str(seq), "initiales": initiales})
+    assert envoyer(200, "RECENT").status_code == 204
+    assert envoyer(100, "ANCIEN").status_code == 204   # arrivé en retard : ignoré
+    assert envoyer(200, "REJOUE").status_code == 204   # même numéro renvoyé : ignoré
+    page = chir.get("/nouveau").get_data(as_text=True)
+    assert 'value="RECENT"' in page and "ANCIEN" not in page and "REJOUE" not in page
+
+
+def test_admin_activation_rejouee(app, adm):
+    cid = _id_chirurgien(app, "Dr Test")
+    adm.post(f"/admin/chirurgiens/{cid}/basculer", data={"actif": "0"})
+    adm.post(f"/admin/chirurgiens/{cid}/basculer", data={"actif": "0"})
+    from app.models import Chirurgien
+    with app.app_context():
+        assert db.session.get(Chirurgien, cid).actif is False
+
+
+def test_admin_liberation_rejouee(app, adm):
+    from app.models import Chirurgien
+    cid = _id_chirurgien(app, "Dr Test")
+    adm.post(f"/admin/chirurgiens/{cid}/liberer", data={"generation": "0"})
+    adm.post(f"/admin/chirurgiens/{cid}/liberer", data={"generation": "0"})
+    with app.app_context():
+        assert db.session.get(Chirurgien, cid).generation_session == 1
+
+
+def test_admin_nouveau_qr_rejoue(app, adm, jeton):
+    adm.post("/admin/parametres/nouveau-qr", data={"jeton_actuel": jeton})
+    with app.app_context():
+        nouveau = Parametres.courants().jeton_acces
+    assert nouveau != jeton
+    r = adm.post("/admin/parametres/nouveau-qr", data={"jeton_actuel": jeton}, follow_redirects=True)
+    assert "déjà été généré" in r.get_data(as_text=True)
+    with app.app_context():
+        assert Parametres.courants().jeton_acces == nouveau
+
+
+def test_admin_suppression_rejouee_ne_touche_pas_un_autre_patient(app, adm, chir):
+    creer_patient(chir)
+    from app.models import empreinte
+    with app.app_context():
+        ancienne = empreinte(Patient.query.one())
+    data = {"confirmation": "HYD-001", "empreinte": ancienne}
+    adm.post("/admin/patient/HYD-001/supprimer", data=data)
+    r = adm.post("/admin/patient/HYD-001/supprimer", data=data, follow_redirects=True)
+    assert "déjà supprimé" in r.get_data(as_text=True)
+    # Le numéro est réattribué à un nouvel enfant : un renvoi tardif ne doit pas le supprimer.
+    creer_patient(chir, initiales="ZZ", age_ans="8")
+    with app.app_context():
+        assert Patient.query.one().numero == "HYD-001"
+    adm.post("/admin/patient/HYD-001/supprimer", data=data)
+    with app.app_context():
+        assert Patient.query.count() == 1
+
+
+def test_admin_effacement_rejoue_ne_touche_pas_une_visite_ressaisie(app, adm, chir):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention(95))
+    chir.post("/patient/HYD-001/visite/J7", data={"action": "non_realisee"})
+    from app.models import empreinte
+    with app.app_context():
+        ancienne = empreinte(Visite.query.one())
+    adm.post("/admin/patient/HYD-001/visite/J7/effacer", data={"empreinte": ancienne})
+    chir.post("/patient/HYD-001/visite/J7", data={"action": "non_realisee"})
+    adm.post("/admin/patient/HYD-001/visite/J7/effacer", data={"empreinte": ancienne})
+    with app.app_context():
+        assert Visite.query.count() == 1
+
+
+def test_admin_mot_de_passe_rejoue(adm):
+    data = {"ancien": "motdepasse", "nouveau": "nouveau-mdp-1", "confirmation": "nouveau-mdp-1"}
+    assert adm.post("/admin/mot-de-passe", data=data).status_code == 302
+    r = adm.post("/admin/mot-de-passe", data=data, follow_redirects=True)
+    page = r.get_data(as_text=True)
+    assert "Mot de passe modifié" in page and "incorrect" not in page
+
+
+# ------------------------------------------------------- guides d'utilisation
+
+def test_chaque_ecran_a_son_guide(app, chir, adm, jeton):
+    creer_patient(chir)
+    chir.post("/patient/HYD-001/intervention", data=intervention(95))
+    anonyme = app.test_client()
+    pages = [
+        (anonyme, "/bienvenue"), (anonyme, "/admin/connexion"),
+        (chir, "/"), (chir, "/recherche?q=1"), (chir, "/nouveau"), (chir, "/patient/HYD-001"),
+        (chir, "/patient/HYD-001/enregistre"), (chir, "/patient/HYD-001/visite/M3"),
+        (adm, "/admin/"), (adm, "/admin/patients"), (adm, "/admin/patient/HYD-001"),
+        (adm, "/admin/patient/HYD-001/modifier"), (adm, "/admin/patient/HYD-001/intervention"),
+        (adm, "/admin/patient/HYD-001/visite/J7"), (adm, "/admin/chirurgiens"), (adm, "/admin/parametres"),
+        (adm, "/admin/mot-de-passe"), (adm, "/admin/export"),
+    ]
+    for client, url in pages:
+        page = client.get(url).get_data(as_text=True)
+        assert 'id="panneau-aide"' in page and "data-ouvrir-aide" in page, url
+    # Formulaire d'intervention chirurgien (sur un patient sans intervention) et choix du nom.
+    creer_patient(chir, initiales="ZZ", age_ans="8")
+    assert 'id="panneau-aide"' in chir.get("/patient/HYD-002/intervention").get_data(as_text=True)
+    nouveau = app.test_client()
+    nouveau.get(f"/acces/{jeton}")
+    assert 'id="panneau-aide"' in nouveau.get("/qui-etes-vous").get_data(as_text=True)
+
+
+def test_les_guides_parlent_de_l_ecran_affiche(chir, adm):
+    assert "Retrouver un patient" in chir.get("/").get_data(as_text=True)
+    assert "Exporter les données" in adm.get("/admin/export").get_data(as_text=True)
+
+
+def test_sexe_non_demande_toujours_masculin(app, chir):
+    page = chir.get("/nouveau").get_data(as_text=True)
+    assert 'name="sexe"' not in page and "Féminin" not in page
+    creer_patient(chir, sexe="F")  # une valeur forgée est ignorée
+    with app.app_context():
+        assert {p.sexe for p in Patient.query.all()} == {"M"}

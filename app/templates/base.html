@@ -4,41 +4,153 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <meta name="theme-color" content="#0f5c5c">
+  <meta name="theme-color" content="#ffffff">
   <title>{% block titre_page %}{{ titre or nom_etude }}{% endblock %}</title>
+  <link rel="preload" href="{{ url_for('static', filename='polices/inter-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="{% block classe_body %}{% if request.blueprint == 'admin' %}admin{% else %}chir{% endif %}{% endblock %}">
-<header class="entete">
-  <div class="entete-int">
-    {% if request.blueprint == 'admin' and admin_connecte %}
-      <a class="marque" href="{{ url_for('admin.tableau_de_bord') }}">Beyassa <small>administration</small></a>
-      <nav class="nav-admin">
-        <a href="{{ url_for('admin.tableau_de_bord') }}">Tableau de bord</a>
-        <a href="{{ url_for('admin.patients') }}">Patients</a>
-        <a href="{{ url_for('admin.chirurgiens') }}">Chirurgiens</a>
-        <a href="{{ url_for('admin.parametres') }}">Paramètres et QR code</a>
-        <a href="{{ url_for('admin.export') }}">Export</a>
+{% set espace_admin = request.blueprint == 'admin' %}
+{# Guide de l'écran : app/templates/aide/<blueprint>_<vue>.html, s'il existe. #}
+{% set contenu_aide %}{% include "aide/" ~ (request.endpoint or "")|replace(".", "_") ~ ".html" ignore missing %}{% endset %}
+{% set a_aide = contenu_aide|trim|length > 0 %}
+{% set bouton_aide %}{% if a_aide %}<button type="button" class="bouton-aide" data-ouvrir-aide aria-haspopup="dialog"
+  aria-controls="panneau-aide" title="Guide de cet écran"><span class="icone" aria-hidden="true">help_outline</span><span
+  class="bouton-aide-texte">Aide</span></button>{% endif %}{% endset %}
+<body class="{% block classe_body %}{% if espace_admin %}admin{% else %}chir{% endif %}{% endblock %}">
+<div class="layout-wrapper">
+
+  <header class="layout-topbar">
+    {% if espace_admin %}
+      <a class="topbar-brand" href="{{ url_for('admin.tableau_de_bord') }}">
+        <span class="topbar-brand-icon"><span class="icone" aria-hidden="true">medical_services</span></span>
+        <span>
+          <span class="topbar-brand-text">Beyassa</span>
+          <span class="topbar-brand-sub">Administration</span>
+        </span>
+      </a>
+    {% else %}
+      <a class="topbar-brand" href="{{ url_for('chirurgien.accueil') }}">
+        <span class="topbar-brand-icon"><span class="icone" aria-hidden="true">medical_services</span></span>
+        <span>
+          <span class="topbar-brand-text">Beyassa</span>
+          <span class="topbar-brand-sub">{{ nom_etude }}</span>
+        </span>
+      </a>
+    {% endif %}
+
+    {% if espace_admin and admin_connecte %}
+      {% set ep = request.endpoint or '' %}
+      <nav class="topbar-nav" aria-label="Navigation principale">
+        {% for cible, libelle_nav, icone, actifs in [
+            ('admin.tableau_de_bord', 'Tableau de bord', 'dashboard', ['admin.tableau_de_bord']),
+            ('admin.patients', 'Patients', 'groups', ['admin.patients', 'admin.patient', 'admin.modifier_patient', 'admin.intervention', 'admin.visite']),
+            ('admin.chirurgiens', 'Chirurgiens', 'badge', ['admin.chirurgiens']),
+            ('admin.parametres', 'Paramètres et QR code', 'qr_code_2', ['admin.parametres', 'admin.mot_de_passe']),
+            ('admin.export', 'Export', 'download', ['admin.export']),
+        ] %}
+          <a class="nav-direct {% if ep in actifs %}active{% endif %}" href="{{ url_for(cible) }}"
+             {% if ep in actifs %}aria-current="page"{% endif %}>
+            <span class="icone" aria-hidden="true">{{ icone }}</span>{{ libelle_nav }}
+          </a>
+        {% endfor %}
+      </nav>
+      <div class="topbar-right">
+        {{ bouton_aide }}
+        <span class="topbar-divider"></span>
+        <div class="topbar-user-block">
+          <span class="topbar-avatar" aria-hidden="true">{{ (admin_connecte.identifiant or 'A')[:1]|upper }}</span>
+          <span class="topbar-user-text">
+            <span class="topbar-username">{{ admin_connecte.identifiant }}</span>
+            <span class="topbar-role-label">Administratrice</span>
+          </span>
+        </div>
+        <span class="topbar-divider"></span>
         <form method="post" action="{{ url_for('admin.deconnexion') }}" class="en-ligne">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="lien">Déconnexion</button>
+          <button class="bouton-icone" title="Déconnexion" aria-label="Déconnexion">
+            <span class="icone" aria-hidden="true">logout</span>
+          </button>
         </form>
-      </nav>
-    {% elif request.blueprint == 'admin' %}
-      <span class="marque">Beyassa <small>administration</small></span>
-    {% else %}
-      <a class="marque" href="{{ url_for('chirurgien.accueil') }}">{{ nom_etude }}</a>
-      {% if chirurgien_connecte %}
-        <a class="qui" href="{{ url_for('chirurgien.changer_nom') }}" title="Changer de nom">{{ chirurgien_connecte.nom }}</a>
-      {% endif %}
+      </div>
+    {% elif not espace_admin and chirurgien_connecte %}
+      <div class="topbar-right">
+        {{ bouton_aide }}
+        {% if nom_verrouille %}
+        <span class="topbar-user-block lien-utilisateur" title="Nom verrouillé sur ce téléphone">
+          <span class="topbar-avatar" aria-hidden="true">{{ chirurgien_connecte.nom[:1]|upper }}</span>
+          <span class="topbar-user-text">
+            <span class="topbar-username">{{ chirurgien_connecte.nom }}</span>
+            <span class="topbar-role-label">Chirurgien</span>
+          </span>
+          <span class="icone petite" aria-hidden="true">lock</span>
+        </span>
+        {% else %}
+        <a class="topbar-user-block lien-utilisateur" href="{{ url_for('chirurgien.changer_nom') }}" title="Changer de nom">
+          <span class="topbar-avatar" aria-hidden="true">{{ chirurgien_connecte.nom[:1]|upper }}</span>
+          <span class="topbar-user-text">
+            <span class="topbar-username">{{ chirurgien_connecte.nom }}</span>
+            <span class="topbar-role-label">Chirurgien</span>
+          </span>
+          <span class="icone petite" aria-hidden="true">swap_horiz</span>
+        </a>
+        {% endif %}
+      </div>
+    {% elif a_aide %}
+      <div class="topbar-right">{{ bouton_aide }}</div>
     {% endif %}
+  </header>
+
+  <main class="layout-page">
+    <div class="contenu">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}<div class="flash flash-{{ cat }}" role="status">{{ msg }}</div>{% endfor %}
+      {% endwith %}
+      {% block contenu %}{% endblock %}
+    </div>
+  </main>
+
+</div>
+
+{% if a_aide %}
+<dialog class="panneau-aide" id="panneau-aide" aria-labelledby="titre-aide">
+  <div class="panneau-entete">
+    <p class="panneau-surtitre" id="titre-aide"><span class="icone" aria-hidden="true">menu_book</span>Guide de cet écran</p>
+    <button type="button" class="bouton-icone" data-fermer-aide aria-label="Fermer le guide">
+      <span class="icone" aria-hidden="true">close</span>
+    </button>
   </div>
-</header>
-<main class="contenu">
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for cat, msg in messages %}<div class="flash flash-{{ cat }}" role="status">{{ msg }}</div>{% endfor %}
-  {% endwith %}
-  {% block contenu %}{% endblock %}
-</main>
+  <div class="panneau-corps guide">{{ contenu_aide }}</div>
+</dialog>
+<script>
+(function () {
+  var d = document.getElementById('panneau-aide');
+  function ouvrir() { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  function fermer() { if (d.close) d.close(); else d.removeAttribute('open'); }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-ouvrir-aide]'), function (b) { b.addEventListener('click', ouvrir); });
+  d.querySelector('[data-fermer-aide]').addEventListener('click', fermer);
+  // Un appui en dehors du panneau (sur le fond grisé) le referme.
+  d.addEventListener('click', function (e) { if (e.target === d) fermer(); });
+})();
+</script>
+{% endif %}
+<script>
+/* Double appui : le bouton d'envoi est désactivé le temps de l'envoi (le serveur reste la vraie
+   garantie d'idempotence). Il redevient actif si l'on revient sur la page (envoi interrompu). */
+(function () {
+  document.addEventListener('submit', function (e) {
+    if (e.defaultPrevented || (e.target.method || '').toLowerCase() !== 'post') return;
+    var boutons = e.target.querySelectorAll('button:not([type=button]), input[type=submit]');
+    // Différé : le bouton qui a servi à l'envoi doit encore transmettre sa valeur.
+    setTimeout(function () {
+      Array.prototype.forEach.call(boutons, function (b) { b.disabled = true; b.classList.add('envoi-en-cours'); });
+    }, 0);
+  });
+  window.addEventListener('pageshow', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('.envoi-en-cours'), function (b) {
+      b.disabled = false; b.classList.remove('envoi-en-cours');
+    });
+  });
+})();
+</script>
 </body>
 </html>

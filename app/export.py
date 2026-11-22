@@ -16,7 +16,6 @@ def colonnes(coef):
         ("numero", "Numéro patient", lambda p: p.numero),
         ("initiales", "Initiales", lambda p: p.initiales),
         ("age_ans", "Âge à l'inclusion (ans)", lambda p: p.age_ans),
-        ("sexe", "Sexe (M, F)", lambda p: p.sexe),
         ("niveau_scolaire", "Niveau scolaire", lambda p: p.niveau_scolaire),
         ("consentement_parental", "Consentement parental donné (1 oui, 0 non)", lambda p: _b(p.consentement_parental)),
         ("date_consultation", "Date de la consultation d'inclusion", lambda p: p.date_consultation),

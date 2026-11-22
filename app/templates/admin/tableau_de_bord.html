@@ -3,6 +3,7 @@
 <section class="carte {{ classe }}">
   <h2>{{ titre }} <span class="compte">{{ etats|length }}</span></h2>
   {% if etats %}
+  <div class="defile">
   <table class="tableau">
     <thead><tr><th>Patient</th><th>Visite</th><th>Date prévue</th><th>Fenêtre</th><th></th></tr></thead>
     <tbody>
@@ -17,6 +18,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}<p class="vide">{{ vide }}</p>{% endif %}
 </section>
 {% endmacro %}

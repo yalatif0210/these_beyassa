@@ -15,6 +15,11 @@ def nouveau_jeton():
     return secrets.token_urlsafe(24)
 
 
+def empreinte(obj):
+    """Identifie une ligne précise, même si la base réutilise l'identifiant d'une ligne supprimée."""
+    return f"{obj.id}-{obj.cree_le:%Y%m%d%H%M%S%f}" if obj is not None and obj.cree_le else ""
+
+
 def volume_ml(longueur, largeur, epaisseur, coefficient):
     """Volume en mL à partir de trois dimensions en mm."""
     if not longueur or not largeur or not epaisseur:
@@ -60,6 +65,9 @@ class Chirurgien(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(120), unique=True, nullable=False)
     actif = db.Column(db.Boolean, nullable=False, default=True)
+    # Incrémenté par l'administratrice pour « libérer » les téléphones de ce chirurgien :
+    # les sessions qui portent une ancienne valeur doivent rechoisir le nom.
+    generation_session = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
 
 class Patient(db.Model):
@@ -190,3 +198,39 @@ class Visite(db.Model):
         if not opere or not oppose:
             return None
         return round(opere / oppose, 2)
+
+
+class Brouillon(db.Model):
+    """Saisie en cours d'un chirurgien, enregistrée automatiquement.
+
+    `cle` désigne le formulaire : "nouveau", "intervention:HYD-001" ou "visite:HYD-001:J7".
+    `page` identifie l'affichage du formulaire : une fois la saisie enregistrée, le brouillon est
+    « clos » et les sauvegardes automatiques encore en route pour cette même page sont ignorées.
+    """
+    __tablename__ = "brouillons"
+    __table_args__ = (db.UniqueConstraint("chirurgien_id", "cle", name="uq_brouillon_chirurgien_cle"),)
+    id = db.Column(db.Integer, primary_key=True)
+    chirurgien_id = db.Column(db.Integer, db.ForeignKey("chirurgiens.id"), nullable=False)
+    cle = db.Column(db.String(60), nullable=False)
+    page = db.Column(db.String(32), nullable=False, default="")
+    donnees = db.Column(db.Text, nullable=False, default="{}")
+    clos = db.Column(db.Boolean, nullable=False, default=False)
+    # Horodatage (ms) de la modification côté téléphone : une sauvegarde plus ancienne arrivée
+    # en retard n'écrase jamais une plus récente.
+    seq = db.Column(db.BigInteger, nullable=False, default=0, server_default="0")
+    maj_le = db.Column(db.DateTime, nullable=False, default=maintenant, onupdate=maintenant)
+
+
+class Envoi(db.Model):
+    """Formulaire chirurgien déjà enregistré, identifié par son jeton d'envoi (idempotence).
+
+    Enregistré dans la même transaction que la saisie : si la saisie existe, le jeton aussi.
+    Un envoi rejoué avec le même jeton renvoie vers `resultat` sans rien créer.
+    """
+    __tablename__ = "envois"
+    id = db.Column(db.Integer, primary_key=True)
+    jeton = db.Column(db.String(32), unique=True, nullable=False)
+    chirurgien_id = db.Column(db.Integer, db.ForeignKey("chirurgiens.id"), nullable=False)
+    cle = db.Column(db.String(60), nullable=False)
+    resultat = db.Column(db.String(200), nullable=False)
+    cree_le = db.Column(db.DateTime, nullable=False, default=maintenant)

@@ -13,6 +13,7 @@
   <form method="post" action="{{ url_for('admin.nouveau_qr') }}"
         onsubmit="return confirm('Générer un nouveau QR code ? L\'ancien cessera immédiatement de fonctionner et les chirurgiens devront scanner le nouveau.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="jeton_actuel" value="{{ p.jeton_acces }}">
     <button class="bouton discret">Générer un nouveau QR code</button>
   </form>
   <p class="aide">À utiliser si le QR code a circulé en dehors du service.</p>

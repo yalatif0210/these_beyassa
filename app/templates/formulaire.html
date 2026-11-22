@@ -5,10 +5,13 @@
 <p class="sous-titre">{{ patient.initiales }}, {{ patient.age_ans }} ans, hydrocèle {{ libelle(R.COTES, patient.cote)|lower }}</p>
 
 {% if erreurs %}<div class="flash flash-erreur" role="alert">Certains champs sont à corriger (en rouge).</div>{% endif %}
+{% if cle_brouillon %}{% include "_brouillon_bandeau.html" %}{% endif %}
 
 <form method="post" class="formulaire" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if cle_brouillon %}<input type="hidden" name="_page" value="{{ page_brouillon }}">{% endif %}
   {% include partiel %}
+  {% if cle_brouillon %}{% include "_brouillon_pied.html" %}{% endif %}
   <div class="actions">
     <button type="submit" class="bouton principal">Enregistrer</button>
     <a class="bouton secondaire" href="{{ retour }}">Annuler</a>
@@ -19,10 +22,12 @@
 <form method="post" class="non-realisee" onsubmit="return confirm('Confirmer que la visite {{ echeance }} n\'a pas eu lieu ?');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="action" value="non_realisee">
+  {% if cle_brouillon %}<input type="hidden" name="_page" value="{{ page_brouillon }}">{% endif %}
   <button type="submit" class="bouton discret">La visite {{ echeance }} n'a pas eu lieu</button>
 </form>
 {% endif %}
 
+{% if cle_brouillon %}{% include "_brouillon_script.html" %}{% endif %}
 {% if erreurs %}
 <script>
   (function () { var e = document.querySelector('.en-erreur'); if (e) e.scrollIntoView({block: 'center'}); })();
