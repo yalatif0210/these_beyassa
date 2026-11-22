@@ -86,7 +86,13 @@ Méthode suivie pour ne pas se fermer l'accès :
 
 ---
 
-## Étape 4 : installer Beyassa
+## Étape 4 : installer Beyassa ✅ fait le 22/11/2026
+
+Installé dans `~/beyassa` (utilisateur `christian`). Les secrets du `.env` ont été générés sur le serveur et n'en sont jamais sortis. Le certificat d'origine (`*.beyassa.org`, valable jusqu'en 2041) a été vérifié avant la copie : émis par Cloudflare et cohérent avec sa clé. Vérifications faites à travers Cloudflare : page d'accueil, QR code, connexion admin, export, IP réelle dans les journaux, refus de l'IP directe et de toute connexion hors Cloudflare (444), aucune trace du jeton dans les journaux, première sauvegarde. Tâche mensuelle de mise à jour des adresses Cloudflare installée (`crontab -l`).
+
+**Mot de passe administrateur initial** : il a été généré au hasard. Pour le lire : `ssh vps-elyon-staging "grep ADMIN_MOT_DE_PASSE ~/beyassa/.env"`. Le changer dès la première connexion. La valeur du `.env` ne sert qu'à créer le compte au tout premier démarrage.
+
+Commandes de référence, pour une réinstallation :
 
 ```bash
 ssh vps-elyon-staging
@@ -95,7 +101,7 @@ cd ~/beyassa
 cp .env.example .env
 chmod 600 .env
 openssl rand -hex 32        # à coller dans SECRET_KEY
-openssl rand -base64 24     # à coller dans POSTGRES_PASSWORD
+openssl rand -hex 24        # à coller dans POSTGRES_PASSWORD (hexadécimal : « / » et « + » casseraient l'adresse de la base)
 nano .env                   # remplir SECRET_KEY, ADMIN_MOT_DE_PASSE, POSTGRES_PASSWORD ; DOMAINE et BASE_URL valent déjà etude.beyassa.org
 mkdir -p deploy/certs && chmod 700 deploy/certs
 exit

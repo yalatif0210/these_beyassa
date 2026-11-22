@@ -10,7 +10,9 @@ trap 'rm -rf "$tmp"' EXIT
 
 curl -fsS --max-time 30 https://www.cloudflare.com/ips-v4 > "$tmp/v4"
 curl -fsS --max-time 30 https://www.cloudflare.com/ips-v6 > "$tmp/v6"
-cat "$tmp/v4" "$tmp/v6" | tr -d '\r' | grep -v '^$' > "$tmp/plages"
+# Un saut de ligne après chaque liste : ips-v4 n'en a pas à la fin, sa dernière plage se collerait
+# à la première plage IPv6.
+{ cat "$tmp/v4"; echo; cat "$tmp/v6"; echo; } | tr -d '\r' | grep -v '^$' > "$tmp/plages"
 
 # Garde-fou : uniquement des plages d'adresses, et une liste plausible. Sinon on ne touche à rien,
 # car une liste vide ou fausse couperait l'accès à l'application.
